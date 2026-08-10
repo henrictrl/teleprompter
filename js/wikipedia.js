@@ -2,8 +2,8 @@
 // com o tamanho aproximado (em palavras) pedido pelo usuário.
 
 export const LANGS = {
-  en: { code: 'en', label: 'English' },
-  es: { code: 'es', label: 'Español' },
+  en: { code: 'en', label: 'English', speechLang: 'en-US' },
+  es: { code: 'es', label: 'Español', speechLang: 'es-ES' },
 };
 
 // Categorias de topo por idioma. É uma aproximação: a busca por

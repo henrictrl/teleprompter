@@ -1,6 +1,7 @@
 import { LANGS, TOPICS, buildScript } from './wikipedia.js';
 import { getCache, saveToCache, deleteFromCache, getHistory, addHistoryEntry, getStats } from './storage.js';
 import { createTeleprompter } from './teleprompter.js';
+import { isSupported as micIsSupported, createSpeechChecker, normalizeWord, tokenize } from './speech.js';
 
 // ---------- estado ----------
 const state = {
@@ -12,6 +13,10 @@ const state = {
 let currentScript = null;
 let sessionLogged = false;
 let fontSize = 34;
+let wordEls = [];
+let scriptWordsNorm = [];
+let expectedIndex = 0;
+let micOn = false;
 
 // ---------- refs: tela de configuração ----------
 const topicSelect = document.getElementById('topic-select');
@@ -39,8 +44,10 @@ const btnSpeedUp = document.getElementById('btn-speed-up');
 const btnSpeedDown = document.getElementById('btn-speed-down');
 const btnFontUp = document.getElementById('btn-font-up');
 const btnFontDown = document.getElementById('btn-font-down');
+const btnMic = document.getElementById('btn-mic');
+const liveCaption = document.getElementById('live-caption');
 
-const prompter = createTeleprompter({ viewport, content: contentEl });
+const prompter = createTeleprompter({ viewport, content: contentEl, minWpm: 60, maxWpm: 600 });
 
 // ---------- helpers ----------
 function escapeHTML(str) {
@@ -96,10 +103,19 @@ wireSeg('field-duration', v => { state.duration = parseInt(v, 10); });
 
 topicSelect.addEventListener('change', () => { state.topic = topicSelect.value; });
 
+function updateRangeFill(rangeEl) {
+  const min = Number(rangeEl.min);
+  const max = Number(rangeEl.max);
+  const pct = ((Number(rangeEl.value) - min) / (max - min)) * 100;
+  rangeEl.style.background = `linear-gradient(to right, var(--text-dim) 0%, var(--text-dim) ${pct}%, var(--border) ${pct}%, var(--border) 100%)`;
+}
+
 wpmRange.addEventListener('input', () => {
   state.wpmSetting = parseInt(wpmRange.value, 10);
   wpmValue.textContent = state.wpmSetting;
+  updateRangeFill(wpmRange);
 });
+updateRangeFill(wpmRange);
 
 btnGenerate.addEventListener('click', async () => {
   btnGenerate.disabled = true;
@@ -180,9 +196,20 @@ function renderHistory() {
 function renderContentText(text) {
   contentEl.style.fontSize = fontSize + 'px';
   contentEl.innerHTML = '';
-  text.split(/\n{2,}/).filter(Boolean).forEach(p => {
+  wordEls = [];
+  scriptWordsNorm = [];
+  text.split(/\n{2,}/).filter(Boolean).forEach(paragraph => {
     const pEl = document.createElement('p');
-    pEl.textContent = p.trim();
+    const words = paragraph.trim().split(/\s+/).filter(Boolean);
+    words.forEach((w, i) => {
+      const span = document.createElement('span');
+      span.className = 'word';
+      span.textContent = w;
+      pEl.appendChild(span);
+      if (i < words.length - 1) pEl.appendChild(document.createTextNode(' '));
+      wordEls.push(span);
+      scriptWordsNorm.push(normalizeWord(w));
+    });
     contentEl.appendChild(pEl);
   });
 }
@@ -194,6 +221,8 @@ function updateTimecode() {
 function openReader(script) {
   currentScript = script;
   sessionLogged = false;
+  expectedIndex = 0;
+  if (micOn) { speech.stop(); setMicState(false); }
   screenSetup.classList.remove('is-active');
   screenReader.classList.add('is-active');
   contentEl.lang = script.lang;
@@ -227,6 +256,7 @@ function logSession(completed) {
 
 function closeReader() {
   prompter.pause();
+  if (micOn) { speech.stop(); setMicState(false); }
   logSession(false);
   screenReader.classList.remove('is-active');
   screenSetup.classList.add('is-active');
@@ -240,6 +270,7 @@ prompter.onFinish(() => {
   btnPlayPause.textContent = '▶';
   progressFill.style.width = '100%';
   updateTimecode();
+  if (micOn) { speech.stop(); setMicState(false); }
   logSession(true);
 });
 
@@ -252,8 +283,8 @@ btnBack.addEventListener('click', closeReader);
 function bumpSpeed(delta) {
   wpmReadout.textContent = prompter.setWpm(prompter.getWpm() + delta);
 }
-btnSpeedUp.addEventListener('click', () => bumpSpeed(5));
-btnSpeedDown.addEventListener('click', () => bumpSpeed(-5));
+btnSpeedUp.addEventListener('click', () => bumpSpeed(20));
+btnSpeedDown.addEventListener('click', () => bumpSpeed(-20));
 
 function bumpFont(delta) {
   fontSize = Math.max(20, Math.min(52, fontSize + delta));
@@ -261,6 +292,67 @@ function bumpFont(delta) {
 }
 btnFontUp.addEventListener('click', () => bumpFont(2));
 btnFontDown.addEventListener('click', () => bumpFont(-2));
+
+// ---------- reconhecimento de voz ----------
+function markWord(i, state_) {
+  const el = wordEls[i];
+  if (!el) return;
+  el.classList.remove('w-correct', 'w-missed');
+  el.classList.add(state_ === 'correct' ? 'w-correct' : 'w-missed');
+}
+
+function handleFinalChunk(text) {
+  const LOOKAHEAD = 8;
+  const spoken = tokenize(text).map(normalizeWord).filter(Boolean);
+  spoken.forEach(sw => {
+    let found = -1;
+    for (let k = 0; k < LOOKAHEAD && expectedIndex + k < scriptWordsNorm.length; k++) {
+      if (scriptWordsNorm[expectedIndex + k] === sw) { found = expectedIndex + k; break; }
+    }
+    if (found >= 0) {
+      for (let j = expectedIndex; j < found; j++) markWord(j, 'missed');
+      markWord(found, 'correct');
+      expectedIndex = found + 1;
+    }
+    // se não achar no horizonte de busca, ignora — provavelmente foi o
+    // reconhecedor entendendo errado, não vale marcar como erro do usuário
+  });
+}
+
+const speech = createSpeechChecker({
+  onFinalChunk: handleFinalChunk,
+  onInterim: (text) => { liveCaption.textContent = text; },
+  onError: (err) => {
+    if (err === 'not-allowed' || err === 'service-not-allowed') {
+      liveCaption.textContent = 'Permissão de microfone negada.';
+      setMicState(false);
+    }
+  },
+});
+
+function setMicState(on) {
+  micOn = on;
+  btnMic.setAttribute('aria-pressed', on ? 'true' : 'false');
+  contentEl.classList.toggle('mic-active', on);
+  if (!on) liveCaption.textContent = '';
+}
+
+if (!micIsSupported()) {
+  btnMic.disabled = true;
+  btnMic.title = 'Reconhecimento de voz não é suportado nesse navegador (funciona no Chrome/Edge).';
+}
+
+btnMic.addEventListener('click', () => {
+  if (!micIsSupported()) return;
+  if (micOn) {
+    speech.stop();
+    setMicState(false);
+    return;
+  }
+  const speechLang = (LANGS[currentScript ? currentScript.lang : state.lang] || {}).speechLang || 'en-US';
+  const ok = speech.start(speechLang);
+  if (ok) setMicState(true);
+});
 
 document.addEventListener('keydown', (e) => {
   if (!screenReader.classList.contains('is-active')) return;
@@ -270,10 +362,10 @@ document.addEventListener('keydown', (e) => {
     btnPlayPause.textContent = prompter.isPlaying() ? '❚❚' : '▶';
   } else if (e.code === 'ArrowUp') {
     e.preventDefault();
-    bumpSpeed(5);
+    bumpSpeed(20);
   } else if (e.code === 'ArrowDown') {
     e.preventDefault();
-    bumpSpeed(-5);
+    bumpSpeed(-20);
   } else if (e.code === 'Escape') {
     e.preventDefault();
     closeReader();

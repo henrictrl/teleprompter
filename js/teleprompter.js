@@ -2,7 +2,7 @@
 // a partir do "ppm" (palavras por minuto) e da altura total do texto,
 // e anima com requestAnimationFrame.
 
-export function createTeleprompter({ viewport, content, minWpm = 40, maxWpm = 260 }) {
+export function createTeleprompter({ viewport, content, minWpm = 60, maxWpm = 600 }) {
   let wpm = 130;
   let totalWords = 1;
   let playing = false;

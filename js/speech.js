@@ -1,0 +1,79 @@
+// Usa a Web Speech API nativa do navegador — sem lib externa, sem chave.
+// Suporte real hoje: bom no Chrome/Edge, ausente no Firefox, parcial no Safari.
+// O áudio é processado na nuvem do navegador (ex.: Google, no Chrome).
+
+const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+export function isSupported() {
+  return !!SpeechRecognitionCtor;
+}
+
+export function createSpeechChecker({ onFinalChunk, onInterim, onError } = {}) {
+  let recognition = null;
+  let shouldListen = false;
+
+  function start(lang) {
+    if (!SpeechRecognitionCtor) return false;
+
+    recognition = new SpeechRecognitionCtor();
+    recognition.lang = lang;
+    recognition.continuous = true;
+    recognition.interimResults = true;
+
+    recognition.onresult = (event) => {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const result = event.results[i];
+        const text = (result[0] && result[0].transcript || '').trim();
+        if (!text) continue;
+        if (result.isFinal) {
+          if (onFinalChunk) onFinalChunk(text);
+        } else if (onInterim) {
+          onInterim(text);
+        }
+      }
+    };
+
+    recognition.onerror = (event) => {
+      if (onError) onError(event.error);
+    };
+
+    // O navegador encerra sozinho depois de um tempo de silêncio —
+    // se o usuário ainda não pausou o microfone, reinicia na hora.
+    recognition.onend = () => {
+      if (shouldListen) {
+        try { recognition.start(); } catch (e) { /* já estava rodando */ }
+      }
+    };
+
+    shouldListen = true;
+    try {
+      recognition.start();
+      return true;
+    } catch (e) {
+      shouldListen = false;
+      return false;
+    }
+  }
+
+  function stop() {
+    shouldListen = false;
+    if (recognition) {
+      recognition.onend = null;
+      try { recognition.stop(); } catch (e) { /* ignore */ }
+    }
+  }
+
+  return { start, stop };
+}
+
+export function normalizeWord(word) {
+  return word
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+export function tokenize(text) {
+  return text.split(/\s+/).filter(Boolean);
+}
