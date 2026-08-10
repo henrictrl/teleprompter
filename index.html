@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Teleprompter — treino de fala</title>
+<meta name="description" content="Teleprompter pessoal para treinar fala e pronúncia em inglês e espanhol com textos aleatórios da Wikipédia." />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div id="app">
+
+  <!-- ===================== TELA DE CONFIGURAÇÃO ===================== -->
+  <section id="screen-setup" class="screen is-active">
+    <div class="shell">
+
+      <header class="brand">
+        <h1>Teleprompter</h1>
+        <p class="brand-sub">treino de leitura em voz alta — inglês e espanhol</p>
+      </header>
+
+      <div class="card">
+        <div class="field-row">
+          <span class="field-label">Idioma</span>
+          <div class="seg" id="field-lang" role="radiogroup" aria-label="Idioma do texto">
+            <button type="button" class="seg-btn is-selected" data-value="en" role="radio" aria-checked="true">English</button>
+            <button type="button" class="seg-btn" data-value="es" role="radio" aria-checked="false">Español</button>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <label class="field-label" for="topic-select">Tema</label>
+          <select id="topic-select" class="select"></select>
+        </div>
+
+        <div class="field-row">
+          <span class="field-label">Duração</span>
+          <div class="seg" id="field-duration" role="radiogroup" aria-label="Duração em minutos">
+            <button type="button" class="seg-btn" data-value="1" role="radio" aria-checked="false">1 min</button>
+            <button type="button" class="seg-btn is-selected" data-value="2" role="radio" aria-checked="true">2 min</button>
+            <button type="button" class="seg-btn" data-value="3" role="radio" aria-checked="false">3 min</button>
+            <button type="button" class="seg-btn" data-value="5" role="radio" aria-checked="false">5 min</button>
+            <button type="button" class="seg-btn" data-value="7" role="radio" aria-checked="false">7 min</button>
+            <button type="button" class="seg-btn" data-value="10" role="radio" aria-checked="false">10 min</button>
+          </div>
+        </div>
+
+        <div class="field-row">
+          <label class="field-label" for="wpm-range">Velocidade inicial — <span id="wpm-value" class="mono">130</span> ppm</label>
+          <input type="range" id="wpm-range" class="range" min="80" max="220" step="5" value="130" />
+        </div>
+
+        <button type="button" id="btn-generate" class="btn-primary">Gerar texto</button>
+        <p id="generate-status" class="status-text" aria-live="polite"></p>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Textos salvos</h2></div>
+        <ul id="library-list" class="list"></ul>
+        <p id="library-empty" class="empty-note">Nenhum texto salvo ainda. Os textos que você gerar ficam guardados aqui.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Histórico</h2></div>
+        <div id="stats-summary" class="stats-grid"></div>
+        <ul id="history-list" class="list list-compact"></ul>
+        <p id="history-empty" class="empty-note">Ainda sem sessões registradas.</p>
+      </div>
+
+      <p class="foot-note">Atalhos na leitura: <span class="kbd">espaço</span> play/pause · <span class="kbd">↑</span><span class="kbd">↓</span> velocidade · <span class="kbd">esc</span> voltar</p>
+
+    </div>
+  </section>
+
+  <!-- ===================== TELA DE LEITURA ===================== -->
+  <section id="screen-reader" class="screen">
+    <div class="reader">
+
+      <div class="reader-top">
+        <button type="button" id="btn-back" class="icon-btn" aria-label="Voltar">←</button>
+        <div class="timecode mono" id="timecode">00:00 / 00:00</div>
+        <div class="reader-top-spacer"></div>
+      </div>
+
+      <div class="viewport" id="viewport">
+        <div class="content" id="content"></div>
+        <div class="fade-top"></div>
+        <div class="fade-bottom"></div>
+      </div>
+
+      <div class="progress-track">
+        <div class="progress-fill" id="progress-fill"></div>
+      </div>
+
+      <div class="reader-bottom">
+        <button type="button" id="btn-speed-down" class="icon-btn" aria-label="Diminuir velocidade">−</button>
+        <button type="button" id="btn-playpause" class="icon-btn icon-btn-primary" aria-label="Play / pause">▶</button>
+        <button type="button" id="btn-speed-up" class="icon-btn" aria-label="Aumentar velocidade">+</button>
+        <div class="wpm-readout mono"><span id="wpm-readout">130</span> ppm</div>
+        <div class="reader-bottom-spacer"></div>
+        <button type="button" id="btn-font-down" class="icon-btn text-btn" aria-label="Diminuir fonte">A−</button>
+        <button type="button" id="btn-font-up" class="icon-btn text-btn" aria-label="Aumentar fonte">A+</button>
+      </div>
+
+    </div>
+  </section>
+
+</div>
+
+<script type="module" src="js/main.js"></script>
+</body>
+</html>
