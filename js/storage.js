@@ -73,10 +73,39 @@ export function getStats() {
   const byLang = {};
   history.forEach(h => { byLang[h.lang] = (byLang[h.lang] || 0) + 1; });
 
+  // Precisão de leitura (só conta sessões em que o microfone esteve ativo).
+  const micSessions = history.filter(h => h.micUsed && (h.wordsTracked || 0) > 0);
+  const totalTracked = micSessions.reduce((s, h) => s + h.wordsTracked, 0);
+  const totalCorrect = micSessions.reduce((s, h) => s + (h.wordsCorrect || 0), 0);
+  const avgAccuracy = totalTracked ? Math.round((totalCorrect / totalTracked) * 100) : null;
+
+  // Palavras que mais aparecem como "não reconhecidas", por idioma —
+  // pra dar pra comparar ao longo do tempo onde você mais tropeça.
+  const missedByLang = {};
+  history.forEach(h => {
+    if (!h.missedWords || !h.missedWords.length) return;
+    const lang = h.lang || '??';
+    if (!missedByLang[lang]) missedByLang[lang] = {};
+    h.missedWords.forEach(w => {
+      const key = w.toLowerCase();
+      missedByLang[lang][key] = (missedByLang[lang][key] || 0) + 1;
+    });
+  });
+  const topMissedByLang = {};
+  Object.keys(missedByLang).forEach(lang => {
+    topMissedByLang[lang] = Object.entries(missedByLang[lang])
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([word, count]) => ({ word, count }));
+  });
+
   return {
     totalSessions,
     totalMinutes: Math.round(totalSeconds / 60),
     completionRate: totalSessions ? Math.round((completed / totalSessions) * 100) : 0,
     byLang,
+    avgAccuracy,
+    micSessionsCount: micSessions.length,
+    topMissedByLang,
   };
 }

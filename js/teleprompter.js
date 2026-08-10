@@ -88,6 +88,13 @@ export function createTeleprompter({ viewport, content, minWpm = 60, maxWpm = 60
       const max = maxScroll();
       return max ? scrollTop / max : 0;
     },
+    seekToProgress(p) {
+      const max = maxScroll();
+      scrollTop = Math.max(0, Math.min(1, p)) * max;
+      finished = scrollTop >= max && max > 0;
+      applyTransform();
+      if (onTick) onTick({ progress: max ? scrollTop / max : 0, activeSeconds: activeMs / 1000 });
+    },
     getActiveSeconds() {
       return activeMs / 1000;
     },

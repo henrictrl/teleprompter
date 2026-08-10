@@ -17,6 +17,9 @@ let wordEls = [];
 let scriptWordsNorm = [];
 let expectedIndex = 0;
 let micOn = false;
+let micUsedThisSession = false;
+let sessionCorrectCount = 0;
+let sessionMissedWords = [];
 
 // ---------- refs: tela de configuração ----------
 const topicSelect = document.getElementById('topic-select');
@@ -46,8 +49,13 @@ const btnFontUp = document.getElementById('btn-font-up');
 const btnFontDown = document.getElementById('btn-font-down');
 const btnMic = document.getElementById('btn-mic');
 const liveCaption = document.getElementById('live-caption');
+const progressTrack = document.getElementById('progress-track');
 
 const prompter = createTeleprompter({ viewport, content: contentEl, minWpm: 60, maxWpm: 600 });
+
+function syncPlayButton() {
+  btnPlayPause.textContent = prompter.isPlaying() ? '❚❚' : '▶';
+}
 
 // ---------- helpers ----------
 function escapeHTML(str) {
@@ -170,22 +178,70 @@ libraryList.addEventListener('click', (e) => {
   }
 });
 
+function tallyWords(words) {
+  const counts = new Map();
+  words.forEach(w => {
+    const key = w.toLowerCase();
+    if (!counts.has(key)) counts.set(key, { word: w, count: 0 });
+    counts.get(key).count++;
+  });
+  return [...counts.values()].sort((a, b) => b.count - a.count);
+}
+
+function chipRow(items) {
+  return `<div class="chip-row">${items.map(({ word, count }) =>
+    `<span class="chip">${escapeHTML(word)}${count > 1 ? `<span class="chip-count">×${count}</span>` : ''}</span>`
+  ).join('')}</div>`;
+}
+
+function renderTopMissed(stats) {
+  const container = document.getElementById('top-missed');
+  const langs = Object.keys(stats.topMissedByLang || {}).filter(l => stats.topMissedByLang[l].length);
+  if (!langs.length) { container.innerHTML = ''; return; }
+  container.innerHTML = langs.map(lang => `
+    <div class="top-missed-group">
+      <div class="top-missed-label">Palavras que mais escapam — ${LANGS[lang]?.label || lang}</div>
+      ${chipRow(stats.topMissedByLang[lang])}
+    </div>
+  `).join('');
+}
+
 function renderHistory() {
   const stats = getStats();
   statsSummary.innerHTML = `
     <div class="stat-item"><span class="stat-value mono">${stats.totalSessions}</span><span class="stat-label">sessões</span></div>
     <div class="stat-item"><span class="stat-value mono">${stats.totalMinutes}</span><span class="stat-label">min. lidos</span></div>
     <div class="stat-item"><span class="stat-value mono">${stats.completionRate}%</span><span class="stat-label">concluídas</span></div>
+    <div class="stat-item"><span class="stat-value mono">${stats.avgAccuracy === null ? '—' : stats.avgAccuracy + '%'}</span><span class="stat-label">precisão de voz</span></div>
   `;
+  renderTopMissed(stats);
+
   const history = getHistory();
   historyEmpty.style.display = history.length ? 'none' : '';
   historyList.innerHTML = history.slice(0, 8).map(h => {
     const mins = Math.round(((h.activeSeconds || 0) / 60) * 10) / 10;
+    const hasMic = h.micUsed && (h.wordsTracked || 0) > 0;
+    const accuracy = hasMic ? Math.round((h.wordsCorrect / h.wordsTracked) * 100) : null;
+
+    const metaParts = [LANGS[h.lang]?.label || h.lang, `${mins} min`];
+    if (h.completed) metaParts.push('concluído');
+    if (accuracy !== null) metaParts.push(`${accuracy}% reconhecido`);
+    metaParts.push(formatRelativeDate(h.at));
+
+    const missedTally = hasMic && h.missedWords && h.missedWords.length ? tallyWords(h.missedWords) : [];
+    const detail = missedTally.length ? `
+      <details class="history-detail">
+        <summary>${missedTally.length} palavra${missedTally.length === 1 ? '' : 's'} não reconhecida${missedTally.length === 1 ? '' : 's'}</summary>
+        ${chipRow(missedTally)}
+      </details>
+    ` : '';
+
     return `
       <li class="list-item">
         <div class="list-item-main">
           <div class="list-item-title">${escapeHTML(h.title || 'Texto')}</div>
-          <div class="list-item-meta">${LANGS[h.lang]?.label || h.lang} · ${mins} min${h.completed ? ' · concluído' : ''} · ${formatRelativeDate(h.at)}</div>
+          <div class="list-item-meta">${metaParts.join(' · ')}</div>
+          ${detail}
         </div>
       </li>
     `;
@@ -222,6 +278,9 @@ function openReader(script) {
   currentScript = script;
   sessionLogged = false;
   expectedIndex = 0;
+  micUsedThisSession = false;
+  sessionCorrectCount = 0;
+  sessionMissedWords = [];
   if (micOn) { speech.stop(); setMicState(false); }
   screenSetup.classList.remove('is-active');
   screenReader.classList.add('is-active');
@@ -233,7 +292,7 @@ function openReader(script) {
     prompter.setWpm(state.wpmSetting);
     wpmReadout.textContent = prompter.getWpm();
     progressFill.style.width = '0%';
-    btnPlayPause.textContent = '▶';
+    syncPlayButton();
     updateTimecode();
   });
 }
@@ -243,6 +302,7 @@ function logSession(completed) {
   const activeSeconds = prompter.getActiveSeconds();
   if (activeSeconds < 2) return;
   sessionLogged = true;
+  const wordsTracked = sessionCorrectCount + sessionMissedWords.length;
   addHistoryEntry({
     title: currentScript.title,
     lang: currentScript.lang,
@@ -250,6 +310,10 @@ function logSession(completed) {
     targetMinutes: state.duration,
     activeSeconds,
     completed: !!completed,
+    micUsed: micUsedThisSession,
+    wordsCorrect: sessionCorrectCount,
+    wordsTracked,
+    missedWords: sessionMissedWords.slice(0, 80),
   });
   renderHistory();
 }
@@ -267,7 +331,7 @@ prompter.onTick(({ progress }) => {
   updateTimecode();
 });
 prompter.onFinish(() => {
-  btnPlayPause.textContent = '▶';
+  syncPlayButton();
   progressFill.style.width = '100%';
   updateTimecode();
   if (micOn) { speech.stop(); setMicState(false); }
@@ -276,7 +340,7 @@ prompter.onFinish(() => {
 
 btnPlayPause.addEventListener('click', () => {
   prompter.toggle();
-  btnPlayPause.textContent = prompter.isPlaying() ? '❚❚' : '▶';
+  syncPlayButton();
 });
 btnBack.addEventListener('click', closeReader);
 
@@ -293,12 +357,57 @@ function bumpFont(delta) {
 btnFontUp.addEventListener('click', () => bumpFont(2));
 btnFontDown.addEventListener('click', () => bumpFont(-2));
 
+// ---------- arrastar/clicar na barra de progresso, como num vídeo ----------
+let scrubbing = false;
+let wasPlayingBeforeScrub = false;
+
+function progressFromEvent(e) {
+  const rect = progressTrack.getBoundingClientRect();
+  const x = e.clientX - rect.left;
+  return rect.width ? Math.max(0, Math.min(1, x / rect.width)) : 0;
+}
+
+function applySeek(e) {
+  const p = progressFromEvent(e);
+  prompter.seekToProgress(p);
+  progressFill.style.width = `${Math.round(p * 100)}%`;
+  updateTimecode();
+}
+
+progressTrack.addEventListener('pointerdown', (e) => {
+  if (!currentScript) return;
+  scrubbing = true;
+  wasPlayingBeforeScrub = prompter.isPlaying();
+  prompter.pause();
+  syncPlayButton();
+  progressTrack.classList.add('is-scrubbing');
+  progressTrack.setPointerCapture(e.pointerId);
+  applySeek(e);
+});
+progressTrack.addEventListener('pointermove', (e) => {
+  if (!scrubbing) return;
+  applySeek(e);
+});
+function endScrub() {
+  if (!scrubbing) return;
+  scrubbing = false;
+  progressTrack.classList.remove('is-scrubbing');
+  if (wasPlayingBeforeScrub) {
+    prompter.play();
+    syncPlayButton();
+  }
+}
+progressTrack.addEventListener('pointerup', endScrub);
+progressTrack.addEventListener('pointercancel', endScrub);
+
 // ---------- reconhecimento de voz ----------
 function markWord(i, state_) {
   const el = wordEls[i];
   if (!el) return;
   el.classList.remove('w-correct', 'w-missed');
   el.classList.add(state_ === 'correct' ? 'w-correct' : 'w-missed');
+  if (state_ === 'correct') sessionCorrectCount++;
+  else sessionMissedWords.push(el.textContent);
 }
 
 function handleFinalChunk(text) {
@@ -332,6 +441,7 @@ const speech = createSpeechChecker({
 
 function setMicState(on) {
   micOn = on;
+  if (on) micUsedThisSession = true;
   btnMic.setAttribute('aria-pressed', on ? 'true' : 'false');
   contentEl.classList.toggle('mic-active', on);
   if (!on) liveCaption.textContent = '';
