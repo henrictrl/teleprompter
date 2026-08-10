@@ -49,9 +49,9 @@
           </div>
         </div>
 
-        <div class="field-row">
+        <div class="field-row field-row-range">
           <label class="field-label" for="wpm-range">Velocidade inicial — <span id="wpm-value" class="mono">130</span> ppm</label>
-          <input type="range" id="wpm-range" class="range" min="80" max="220" step="5" value="130" />
+          <input type="range" id="wpm-range" class="range" min="60" max="600" step="10" value="130" />
         </div>
 
         <button type="button" id="btn-generate" class="btn-primary">Gerar texto</button>
@@ -96,12 +96,17 @@
         <div class="progress-fill" id="progress-fill"></div>
       </div>
 
+      <div id="live-caption" class="live-caption" aria-live="polite"></div>
+
       <div class="reader-bottom">
         <button type="button" id="btn-speed-down" class="icon-btn" aria-label="Diminuir velocidade">−</button>
         <button type="button" id="btn-playpause" class="icon-btn icon-btn-primary" aria-label="Play / pause">▶</button>
         <button type="button" id="btn-speed-up" class="icon-btn" aria-label="Aumentar velocidade">+</button>
         <div class="wpm-readout mono"><span id="wpm-readout">130</span> ppm</div>
         <div class="reader-bottom-spacer"></div>
+        <button type="button" id="btn-mic" class="icon-btn text-btn mic-btn" aria-pressed="false" aria-label="Ativar reconhecimento de voz">
+          <span class="mic-dot" aria-hidden="true"></span>Voz
+        </button>
         <button type="button" id="btn-font-down" class="icon-btn text-btn" aria-label="Diminuir fonte">A−</button>
         <button type="button" id="btn-font-up" class="icon-btn text-btn" aria-label="Aumentar fonte">A+</button>
       </div>

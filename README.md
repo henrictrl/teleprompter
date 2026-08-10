@@ -12,10 +12,19 @@ Site estático, sem servidor — roda 100% no navegador.
   número de palavras (duração × ppm) e junta/corta artigos até chegar
   perto desse tamanho, sempre tentando parar no fim de uma frase.
 - **Leitura:** rolagem automática calculada pra terminar no tempo certo,
-  com play/pause e velocidade ajustável ao vivo.
+  com play/pause e velocidade ajustável ao vivo (60 a 600 palavras por
+  minuto).
+- **Reconhecimento de voz:** botão "Voz" na tela de leitura ativa o
+  microfone (Web Speech API do navegador) e vai marcando, palavra por
+  palavra, o que ele reconheceu que você leu — sem sair do preto e
+  branco: palavra ainda não confirmada fica apagada, confirmada fica
+  clara, pulada fica riscada. Mostra também uma legenda ao vivo com o
+  que foi entendido.
 - **Cache e histórico:** tudo fica salvo no `localStorage` do navegador —
   textos gerados (pra reler depois) e o histórico de sessões (pra ver
-  estatística de uso). Nada é enviado pra nenhum servidor.
+  estatística de uso). Nada é enviado pra nenhum servidor (a única
+  exceção é o áudio do microfone, que o navegador manda pro serviço de
+  reconhecimento de fala dele — no Chrome, servidores do Google).
 
 ## Rodar localmente
 
@@ -54,11 +63,15 @@ python3 -m http.server 8000
   verdade, dá pra trocar a fonte por uma API tipo GNews/NewsAPI (exige
   chave gratuita, que num site estático fica visível no código — ok
   pra uso pessoal, mas vale saber).
+- **A checagem de pronúncia não é uma nota fonética.** O navegador
+  transcreve o que ele "entendeu" que você falou e compara com o texto —
+  é um bom indicador prático de inteligibilidade, mas não mede sotaque
+  de verdade. Funciona bem no Chrome/Edge; não tem suporte no Firefox
+  e é parcial no Safari.
 
-## Próximos passos (ainda não implementado)
+## Próximos passos (ideias, ainda não implementadas)
 
-- **Checagem de pronúncia:** usar a Web Speech API do navegador pra
-  ouvir você lendo e destacar o que bateu ou não com o texto. Já foi
-  desenhado e é viável (funciona bem no Chrome/Edge, não tem suporte
-  no Firefox), só ficou de fora dessa primeira versão pra focar no
-  essencial primeiro.
+- Sincronizar a velocidade de rolagem com o ritmo real da fala captada
+  pelo microfone, em vez de manter os dois independentes.
+- Nota final de leitura (taxa de acerto) ao terminar o texto, além do
+  destaque em tempo real.
