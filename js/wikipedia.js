@@ -42,6 +42,16 @@ function countWords(text) {
   return t.split(/\s+/).filter(Boolean).length;
 }
 
+// Proporção de palavras que contêm algum dígito — usado pra evitar
+// texto que é basicamente uma sequência de datas/estatísticas, que é
+// horrível de ler em voz alta.
+function numericDensity(text) {
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return 0;
+  const numeric = words.filter(w => /\d/.test(w)).length;
+  return numeric / words.length;
+}
+
 function pageUrl(langCode, title) {
   return `https://${langCode}.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`;
 }
@@ -116,7 +126,8 @@ async function fetchCandidates(langCode, topicId, count) {
   return Object.values(pages)
     .filter(p => p.extract)
     .map(p => ({ title: p.title, extract: cleanExtract(p.extract), url: pageUrl(langCode, p.title) }))
-    .filter(p => countWords(p.extract) >= 35 && !DISAMBIG_RE.test(p.extract));
+    .filter(p => countWords(p.extract) >= 35 && !DISAMBIG_RE.test(p.extract))
+    .map(p => ({ ...p, density: numericDensity(p.extract) }));
 }
 
 function trimToWordCount(text, targetWords) {
@@ -125,14 +136,24 @@ function trimToWordCount(text, targetWords) {
   const cleaned = text.replace(/\n{2,}/g, '\n\n');
   const sentences = cleaned.split(/(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÑ0-9¡¿"“(])/);
 
-  let out = '';
-  let words = 0;
-  for (const s of sentences) {
-    const w = countWords(s);
-    if (words > 0 && words + w > targetWords * 1.15) break;
-    out += (out ? ' ' : '') + s.trim();
-    words += w;
-    if (words >= targetWords) break;
+  function accumulate(skipDense) {
+    let out = '';
+    let words = 0;
+    for (const s of sentences) {
+      if (skipDense && numericDensity(s) > 0.2) continue; // pula frase que é basicamente data/estatística
+      const w = countWords(s);
+      if (words > 0 && words + w > targetWords * 1.15) break;
+      out += (out ? ' ' : '') + s.trim();
+      words += w;
+      if (words >= targetWords) break;
+    }
+    return { out, words };
+  }
+
+  let { out, words } = accumulate(true);
+  if (words < targetWords * 0.55) {
+    // sem as frases numéricas não sobra texto suficiente — inclui todas
+    ({ out, words } = accumulate(false));
   }
 
   // Se a divisão por frases não achou fronteiras boas (texto virou
@@ -178,7 +199,7 @@ export async function buildScript(langCode, topicId, targetWords) {
       break;
     }
 
-    const pick = candidates[0];
+    const pick = candidates.find(c => c.density <= 0.12) || candidates[0];
     usedTitles.add(pick.title);
     parts.push(pick);
     totalWords += countWords(pick.extract);

@@ -15,11 +15,10 @@ let sessionLogged = false;
 let fontSize = 34;
 let wordEls = [];
 let scriptWordsNorm = [];
+let wordStates = []; // paralelo a wordEls: null | 'correct' | 'missed'
 let expectedIndex = 0;
 let micOn = false;
 let micUsedThisSession = false;
-let sessionCorrectCount = 0;
-let sessionMissedWords = [];
 
 // ---------- refs: tela de configuração ----------
 const topicSelect = document.getElementById('topic-select');
@@ -57,6 +56,7 @@ const btnMic = document.getElementById('btn-mic');
 const micLabel = document.getElementById('mic-label');
 const voiceScore = document.getElementById('voice-score');
 const liveCaption = document.getElementById('live-caption');
+const voiceHint = document.getElementById('voice-hint');
 const progressTrack = document.getElementById('progress-track');
 
 const prompter = createTeleprompter({ viewport, content: contentEl, minWpm: 60, maxWpm: 600 });
@@ -294,6 +294,7 @@ function renderContentText(text) {
       const span = document.createElement('span');
       span.className = 'word';
       span.textContent = w;
+      span.dataset.idx = String(wordEls.length);
       pEl.appendChild(span);
       if (i < words.length - 1) pEl.appendChild(document.createTextNode(' '));
       wordEls.push(span);
@@ -301,6 +302,7 @@ function renderContentText(text) {
     });
     contentEl.appendChild(pEl);
   });
+  wordStates = new Array(wordEls.length).fill(null);
 }
 
 function updateTimecode() {
@@ -312,8 +314,6 @@ function openReader(script) {
   sessionLogged = false;
   expectedIndex = 0;
   micUsedThisSession = false;
-  sessionCorrectCount = 0;
-  sessionMissedWords = [];
   interimProcessedCount = 0;
   if (micOn) { speech.stop(); setMicState(false); }
   liveCaption.textContent = '';
@@ -338,12 +338,22 @@ function openReader(script) {
   updateTimecode();
 }
 
+function getSessionStats() {
+  let correct = 0;
+  const missedWords = [];
+  wordStates.forEach((s, i) => {
+    if (s === 'correct') correct++;
+    else if (s === 'missed') missedWords.push(wordEls[i].textContent);
+  });
+  return { correct, tracked: correct + missedWords.length, missedWords };
+}
+
 function logSession(completed) {
   if (!currentScript || sessionLogged) return;
   const activeSeconds = prompter.getActiveSeconds();
   if (activeSeconds < 2) return;
   sessionLogged = true;
-  const wordsTracked = sessionCorrectCount + sessionMissedWords.length;
+  const { correct, tracked, missedWords } = getSessionStats();
   addHistoryEntry({
     title: currentScript.title,
     lang: currentScript.lang,
@@ -352,9 +362,9 @@ function logSession(completed) {
     activeSeconds,
     completed: !!completed,
     micUsed: micUsedThisSession,
-    wordsCorrect: sessionCorrectCount,
-    wordsTracked,
-    missedWords: sessionMissedWords.slice(0, 80),
+    wordsCorrect: correct,
+    wordsTracked: tracked,
+    missedWords: missedWords.slice(0, 80),
   });
   renderReports();
 }
@@ -445,10 +455,9 @@ progressTrack.addEventListener('pointercancel', endScrub);
 function markWord(i, state_) {
   const el = wordEls[i];
   if (!el) return;
+  wordStates[i] = state_;
   el.classList.remove('w-correct', 'w-missed');
   el.classList.add(state_ === 'correct' ? 'w-correct' : 'w-missed');
-  if (state_ === 'correct') sessionCorrectCount++;
-  else sessionMissedWords.push(el.textContent);
 }
 
 function updateCurrentWordHighlight() {
@@ -462,16 +471,35 @@ function clearCurrentWordHighlight() {
 }
 
 function updateVoiceScore() {
-  const tracked = sessionCorrectCount + sessionMissedWords.length;
+  const { correct, tracked } = getSessionStats();
   if (!tracked) {
     voiceScore.textContent = '';
     voiceScore.className = 'voice-score mono';
     return;
   }
-  const pct = Math.round((sessionCorrectCount / tracked) * 100);
-  voiceScore.textContent = `${sessionCorrectCount}/${tracked} · ${pct}%`;
+  const pct = Math.round((correct / tracked) * 100);
+  voiceScore.textContent = `${correct}/${tracked} · ${pct}%`;
   voiceScore.className = `voice-score mono is-${accuracyTier(pct)}`;
 }
+
+// Clique manual numa palavra: a pessoa fala ela certinho enquanto
+// clica, e ela vira certa na hora — não depende do reconhecedor ter
+// pego direito. Só ativo com o microfone ligado (é aí que as cores
+// fazem sentido).
+function manualCorrectWord(i) {
+  if (!wordEls[i]) return;
+  markWord(i, 'correct');
+  if (i >= expectedIndex) expectedIndex = i + 1;
+  updateCurrentWordHighlight();
+  updateVoiceScore();
+}
+
+contentEl.addEventListener('click', (e) => {
+  if (!micOn) return;
+  const el = e.target.closest('.word');
+  if (!el || !el.dataset.idx) return;
+  manualCorrectWord(Number(el.dataset.idx));
+});
 
 const MATCH_LOOKAHEAD = 8;
 
@@ -541,6 +569,7 @@ function setMicState(on) {
   micLabel.textContent = on ? 'Ouvindo…' : 'Voz';
   micStatusDot.classList.toggle('is-active', on);
   contentEl.classList.toggle('mic-active', on);
+  voiceHint.classList.toggle('is-visible', on);
   if (on) {
     updateCurrentWordHighlight();
   } else {
