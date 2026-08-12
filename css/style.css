@@ -30,6 +30,7 @@
   --glass-border: rgba(255, 255, 255, 0.10);
   --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', sans-serif;
   --font-mono: 'SF Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-read: 'Source Serif 4', Georgia, 'Iowan Old Style', serif;
 }
 
 *{ box-sizing: border-box; }
@@ -491,7 +492,9 @@ button, [role="radio"], select, input[type="range"]{
   width:100%;
   max-width:760px;
   padding:46vh 28px 60vh;
+  font-family:var(--font-read);
   font-size:34px;
+  font-weight:500;
   line-height:1.6;
   color:var(--text);
   will-change:transform;
@@ -500,13 +503,25 @@ button, [role="radio"], select, input[type="range"]{
 .content p:last-child{ margin-bottom:0; }
 
 /* quando o microfone está ativo, as palavras começam apagadas e vão
-   acendendo conforme o reconhecimento de voz confirma que você as leu */
+   acendendo conforme o reconhecimento de voz confirma que você as leu —
+   e também ficam clicáveis, pra corrigir na mão */
 .content.mic-active .word{
   color:var(--text-dim);
-  transition: color 0.15s ease;
+  transition: color 0.15s ease, background 0.1s ease;
   border-radius:4px;
+  cursor:pointer;
+  padding:0 1px;
+  margin:0 -1px;
+}
+.content.mic-active .word:hover{
+  background: var(--accent-dim);
+  color:var(--text);
 }
 .content.mic-active .word.w-correct{
+  color:var(--green);
+}
+.content.mic-active .word.w-correct:hover{
+  background: var(--green-dim);
   color:var(--green);
 }
 .content.mic-active .word.w-missed{
@@ -515,6 +530,10 @@ button, [role="radio"], select, input[type="range"]{
   text-decoration: line-through;
   text-decoration-color: var(--red-dim);
   text-decoration-thickness: 1px;
+}
+.content.mic-active .word.w-missed:hover{
+  background: var(--red-dim);
+  opacity:1;
 }
 .content.mic-active .word.is-current{
   color:var(--text);
@@ -527,13 +546,22 @@ button, [role="radio"], select, input[type="range"]{
 }
 
 .voice-panel{
-  display:flex;
-  align-items:center;
-  gap:14px;
   padding:10px 20px;
   border-top:1px solid var(--glass-border);
   flex-shrink:0;
 }
+.voice-panel-row{
+  display:flex;
+  align-items:center;
+  gap:14px;
+}
+.voice-hint{
+  display:none;
+  margin-top:7px;
+  font-size:11.5px;
+  color:var(--text-faint);
+}
+.voice-hint.is-visible{ display:block; }
 .voice-toggle{
   display:inline-flex;
   align-items:center;
