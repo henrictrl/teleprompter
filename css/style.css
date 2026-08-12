@@ -1,5 +1,5 @@
 :root{
-  --bg: #0a0a0a;
+  --bg: #0a0a0c;
   --bg-elev: #131313;
   --bg-elev-2: #1a1a1a;
   --border: #262626;
@@ -8,6 +8,12 @@
   --text-dim: #8c8c8c;
   --text-faint: #565656;
   --white: #ffffff;
+
+  /* cor de destaque, no espírito do "accent color" do macOS —
+     usada nos controles ativos/selecionados */
+  --accent: #0a84ff;
+  --accent-dim: rgba(10, 132, 255, 0.20);
+  --accent-2: #5e5ce6;
 
   /* cores das luzes de macOS — usadas com significado, não decoração:
      vermelho = erro/fechar, amarelo = em andamento/ouvindo, verde = certo/expandir */
@@ -20,8 +26,8 @@
 
   --radius: 14px;
   --radius-sm: 9px;
-  --glass-bg: rgba(255, 255, 255, 0.045);
-  --glass-border: rgba(255, 255, 255, 0.08);
+  --glass-bg: rgba(140, 150, 180, 0.07);
+  --glass-border: rgba(255, 255, 255, 0.10);
   --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', sans-serif;
   --font-mono: 'SF Mono', 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
 }
@@ -31,8 +37,11 @@ html,body{ height:100%; }
 body{
   margin:0;
   background:
-    radial-gradient(ellipse 900px 600px at 50% -10%, #1c1c1f 0%, transparent 60%),
-    var(--bg);
+    radial-gradient(circle 620px at 12% 8%,  rgba(94,92,230,0.30) 0%, transparent 70%),
+    radial-gradient(circle 680px at 88% 6%,  rgba(10,132,255,0.26) 0%, transparent 70%),
+    radial-gradient(circle 560px at 78% 92%, rgba(40,200,64,0.16) 0%, transparent 70%),
+    radial-gradient(circle 520px at 8% 88%,  rgba(255,95,87,0.10) 0%, transparent 70%),
+    #08080a;
   background-attachment: fixed;
   color:var(--text);
   font-family:var(--font-ui);
@@ -53,7 +62,7 @@ button, [role="radio"], select, input[type="range"]{
   -webkit-tap-highlight-color: transparent;
 }
 :focus-visible{
-  outline: 1px solid var(--text);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -114,10 +123,10 @@ button, [role="radio"], select, input[type="range"]{
 }
 .seg-btn:hover{ color:var(--text); }
 .seg-btn.is-selected{
-  background:#3a3a3d;
-  color:var(--text);
+  background:var(--accent);
+  color:#ffffff;
   font-weight:500;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06) inset;
+  box-shadow: 0 1px 6px rgba(10,132,255,0.45), 0 0 0 1px rgba(255,255,255,0.08) inset;
 }
 
 .select{
@@ -150,18 +159,18 @@ button, [role="radio"], select, input[type="range"]{
   -webkit-appearance:none;
   width:16px; height:16px;
   border-radius:50%;
-  background:var(--text);
+  background:var(--accent);
   cursor:pointer;
   margin-top:0;
-  box-shadow:0 0 0 4px rgba(255,255,255,0.06);
+  box-shadow:0 0 0 4px rgba(10,132,255,0.16);
 }
 .range::-moz-range-thumb{
   width:16px; height:16px;
   border:none;
   border-radius:50%;
-  background:var(--text);
+  background:var(--accent);
   cursor:pointer;
-  box-shadow:0 0 0 4px rgba(255,255,255,0.06);
+  box-shadow:0 0 0 4px rgba(10,132,255,0.16);
 }
 .range::-moz-range-track{
   height:3px;
@@ -170,25 +179,25 @@ button, [role="radio"], select, input[type="range"]{
 }
 .range::-moz-range-progress{
   height:3px;
-  background:var(--text-dim);
+  background:var(--accent);
   border-radius:3px;
 }
 
 .btn-primary{
   width:100%;
   margin-top:4px;
-  background:var(--text);
-  color:#0a0a0a;
+  background: linear-gradient(180deg, #1c93ff 0%, var(--accent) 100%);
+  color:#ffffff;
   border:none;
   border-radius:var(--radius-sm);
   padding:13px;
   font-size:14px;
   font-weight:600;
   cursor:pointer;
-  box-shadow: 0 4px 14px rgba(0,0,0,0.3);
+  box-shadow: 0 4px 16px rgba(10,132,255,0.35);
   transition: opacity 0.12s ease, transform 0.12s ease;
 }
-.btn-primary:hover{ opacity:0.86; }
+.btn-primary:hover{ opacity:0.9; }
 .btn-primary:active{ transform:scale(0.99); }
 .btn-primary:disabled{ opacity:0.4; cursor:default; transform:none; }
 
@@ -198,7 +207,7 @@ button, [role="radio"], select, input[type="range"]{
   color:var(--text-dim);
   min-height:16px;
 }
-.status-text.is-error{ color:#c9c9c9; }
+.status-text.is-error{ color:var(--red); }
 
 .empty-note{
   font-size:13px;
@@ -333,6 +342,45 @@ button, [role="radio"], select, input[type="range"]{
   margin:0 1px;
 }
 
+/* Telas largas: em vez de uma coluna só rolando, organiza como
+   painéis de uma janela de verdade — controles à esquerda,
+   biblioteca e relatórios à direita, tudo visível de uma vez. */
+@media (min-width: 960px){
+  .shell{
+    max-width: 1320px;
+    padding: 44px 32px 40px;
+    display: grid;
+    grid-template-columns: 360px 1fr 1fr;
+    grid-template-areas:
+      "brand    brand    brand"
+      "controls library  history"
+      "controls library  voice"
+      "foot     foot     foot";
+    gap: 18px;
+    align-items: start;
+  }
+  .pane-brand{ grid-area: brand; margin-bottom: 0; }
+  .pane-controls{ grid-area: controls; margin-bottom: 0; }
+  .pane-library{ grid-area: library; margin-bottom: 0; }
+  .pane-history{ grid-area: history; margin-bottom: 0; }
+  .pane-voice{ grid-area: voice; margin-bottom: 0; }
+  .pane-foot{ grid-area: foot; margin-top: 6px; }
+
+  .pane-library{
+    max-height: calc(100vh - 200px);
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--glass-border) transparent;
+  }
+  .pane-library::-webkit-scrollbar{ width:8px; }
+  .pane-library::-webkit-scrollbar-thumb{ background:var(--glass-border); border-radius:8px; }
+  .pane-library::-webkit-scrollbar-track{ background:transparent; }
+}
+
+@media (min-width: 1440px){
+  .shell{ max-width: 1500px; grid-template-columns: 380px 1fr 1fr; }
+}
+
 /* ===================== READER SCREEN ===================== */
 .reader{
   height:100vh;
@@ -424,13 +472,13 @@ button, [role="radio"], select, input[type="range"]{
 .icon-btn.text-btn{ width:auto; padding:0 10px; font-size:12px; }
 .icon-btn-primary{
   width:52px; height:52px;
-  background:var(--text);
-  color:#0a0a0a;
-  border-color:var(--text);
+  background: linear-gradient(180deg, #1c93ff 0%, var(--accent) 100%);
+  color:#ffffff;
+  border-color:transparent;
   font-size:18px;
-  box-shadow:0 4px 14px rgba(0,0,0,0.35);
+  box-shadow:0 4px 16px rgba(10,132,255,0.4);
 }
-.icon-btn-primary:hover{ opacity:0.86; color:#0a0a0a; }
+.icon-btn-primary:hover{ opacity:0.9; color:#ffffff; }
 
 .viewport{
   position:relative;
