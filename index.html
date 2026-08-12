@@ -7,7 +7,7 @@
 <meta name="description" content="Teleprompter pessoal para treinar fala e pronúncia em inglês e espanhol com textos aleatórios da Wikipédia." />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
@@ -109,14 +109,17 @@
       </div>
 
       <div class="voice-panel">
-        <button type="button" id="btn-mic" class="voice-toggle" aria-pressed="false" aria-label="Ativar reconhecimento de voz">
-          <span class="mic-dot" aria-hidden="true"></span>
-          <span id="mic-label">Voz</span>
-        </button>
-        <div class="voice-live">
-          <span id="voice-score" class="voice-score mono"></span>
-          <span id="live-caption" class="voice-caption" aria-live="polite"></span>
+        <div class="voice-panel-row">
+          <button type="button" id="btn-mic" class="voice-toggle" aria-pressed="false" aria-label="Ativar reconhecimento de voz">
+            <span class="mic-dot" aria-hidden="true"></span>
+            <span id="mic-label">Voz</span>
+          </button>
+          <div class="voice-live">
+            <span id="voice-score" class="voice-score mono"></span>
+            <span id="live-caption" class="voice-caption" aria-live="polite"></span>
+          </div>
         </div>
+        <p id="voice-hint" class="voice-hint">Clique numa palavra e fale ela certinho — ela vira verde na hora.</p>
       </div>
 
       <div class="reader-bottom">
