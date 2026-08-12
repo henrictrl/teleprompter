@@ -18,12 +18,12 @@
   <section id="screen-setup" class="screen is-active">
     <div class="shell">
 
-      <header class="brand">
+      <header class="brand pane-brand">
         <h1>Teleprompter</h1>
         <p class="brand-sub">treino de leitura em voz alta — inglês e espanhol</p>
       </header>
 
-      <div class="card">
+      <div class="card pane-controls">
         <div class="field-row">
           <span class="field-label">Idioma</span>
           <div class="seg" id="field-lang" role="radiogroup" aria-label="Idioma do texto">
@@ -58,20 +58,20 @@
         <p id="generate-status" class="status-text" aria-live="polite"></p>
       </div>
 
-      <div class="card">
+      <div class="card pane-library">
         <div class="card-head"><h2>Textos salvos</h2></div>
         <ul id="library-list" class="list"></ul>
         <p id="library-empty" class="empty-note">Nenhum texto salvo ainda. Os textos que você gerar ficam guardados aqui.</p>
       </div>
 
-      <div class="card">
+      <div class="card pane-history">
         <div class="card-head"><h2>Histórico</h2></div>
         <div id="stats-summary" class="stats-grid"></div>
         <ul id="history-list" class="list list-compact"></ul>
         <p id="history-empty" class="empty-note">Ainda sem sessões registradas.</p>
       </div>
 
-      <div class="card">
+      <div class="card pane-voice">
         <div class="card-head"><h2>Reconhecimento de voz</h2></div>
         <div id="voice-summary" class="stats-grid cols-2"></div>
         <div id="top-missed" class="top-missed"></div>
@@ -79,7 +79,7 @@
         <p id="voice-history-empty" class="empty-note">Ainda sem leituras com o microfone ativado.</p>
       </div>
 
-      <p class="foot-note">Atalhos na leitura: <span class="kbd">espaço</span> play/pause · <span class="kbd">↑</span><span class="kbd">↓</span> velocidade · <span class="kbd">esc</span> voltar</p>
+      <p class="foot-note pane-foot">Atalhos na leitura: <span class="kbd">espaço</span> play/pause · <span class="kbd">↑</span><span class="kbd">↓</span> velocidade · <span class="kbd">esc</span> voltar</p>
 
     </div>
   </section>
