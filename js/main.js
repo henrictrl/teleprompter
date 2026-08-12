@@ -129,7 +129,7 @@ function updateRangeFill(rangeEl) {
   const min = Number(rangeEl.min);
   const max = Number(rangeEl.max);
   const pct = ((Number(rangeEl.value) - min) / (max - min)) * 100;
-  rangeEl.style.background = `linear-gradient(to right, var(--text-dim) 0%, var(--text-dim) ${pct}%, var(--border) ${pct}%, var(--border) 100%)`;
+  rangeEl.style.background = `linear-gradient(to right, var(--accent) 0%, var(--accent) ${pct}%, var(--border) ${pct}%, var(--border) 100%)`;
 }
 
 wpmRange.addEventListener('input', () => {
@@ -314,6 +314,7 @@ function openReader(script) {
   micUsedThisSession = false;
   sessionCorrectCount = 0;
   sessionMissedWords = [];
+  interimProcessedCount = 0;
   if (micOn) { speech.stop(); setMicState(false); }
   liveCaption.textContent = '';
   voiceScore.textContent = '';
@@ -472,12 +473,15 @@ function updateVoiceScore() {
   voiceScore.className = `voice-score mono is-${accuracyTier(pct)}`;
 }
 
-function handleFinalChunk(text) {
-  const LOOKAHEAD = 8;
-  const spoken = tokenize(text).map(normalizeWord).filter(Boolean);
-  spoken.forEach(sw => {
+const MATCH_LOOKAHEAD = 8;
+
+// Tenta casar cada palavra falada com o roteiro, a partir de
+// expectedIndex, dentro de uma janela de tolerância — usado tanto
+// pelo resultado provisório (rápido) quanto pelo final (definitivo).
+function matchSpokenWords(normWords) {
+  normWords.forEach(sw => {
     let found = -1;
-    for (let k = 0; k < LOOKAHEAD && expectedIndex + k < scriptWordsNorm.length; k++) {
+    for (let k = 0; k < MATCH_LOOKAHEAD && expectedIndex + k < scriptWordsNorm.length; k++) {
       if (scriptWordsNorm[expectedIndex + k] === sw) { found = expectedIndex + k; break; }
     }
     if (found >= 0) {
@@ -488,13 +492,40 @@ function handleFinalChunk(text) {
     // se não achar no horizonte de busca, ignora — provavelmente foi o
     // reconhecedor entendendo errado, não vale marcar como erro do usuário
   });
+}
+
+// Quantas palavras do trecho falado ATUAL (ainda não finalizado pelo
+// reconhecedor) já foram processadas — pra não repetir e pra saber o
+// que ainda falta quando o trecho crescer ou finalizar.
+let interimProcessedCount = 0;
+
+function handleInterim(text) {
+  liveCaption.textContent = text;
+  const tokens = tokenize(text).map(normalizeWord).filter(Boolean);
+  // segura a ÚLTIMA palavra — ela ainda pode estar sendo reconhecida e
+  // mudar no próximo evento. Só processa o que já parece estável.
+  const stableCount = Math.max(0, tokens.length - 1);
+  if (stableCount > interimProcessedCount) {
+    matchSpokenWords(tokens.slice(interimProcessedCount, stableCount));
+    interimProcessedCount = stableCount;
+    updateCurrentWordHighlight();
+    updateVoiceScore();
+  }
+}
+
+function handleFinalChunk(text) {
+  const tokens = tokenize(text).map(normalizeWord).filter(Boolean);
+  if (tokens.length > interimProcessedCount) {
+    matchSpokenWords(tokens.slice(interimProcessedCount));
+  }
+  interimProcessedCount = 0; // próximo trecho começa do zero
   updateCurrentWordHighlight();
   updateVoiceScore();
 }
 
 const speech = createSpeechChecker({
   onFinalChunk: handleFinalChunk,
-  onInterim: (text) => { liveCaption.textContent = text; },
+  onInterim: handleInterim,
   onError: (err) => {
     if (err === 'not-allowed' || err === 'service-not-allowed') {
       liveCaption.textContent = 'Permissão de microfone negada.';

@@ -1,24 +1,30 @@
 // Busca textos na Wikipédia (aleatório ou por tema) e monta um roteiro
 // com o tamanho aproximado (em palavras) pedido pelo usuário.
+//
+// Só usa o RESUMO inicial de cada artigo (exintro=1), não o corpo
+// inteiro — o corpo completo vem cheio de seções de referências,
+// bibliografia e glosas em outras línguas/alfabetos, que é exatamente
+// o tipo de coisa ruim de ler em voz alta. O resumo inicial é escrito
+// como texto corrido, com começo, meio e fim.
 
 export const LANGS = {
   en: { code: 'en', label: 'English', speechLang: 'en-US' },
   es: { code: 'es', label: 'Español', speechLang: 'es-ES' },
 };
 
-// Categorias de topo por idioma. É uma aproximação: a busca por
-// "incategory" só pega páginas categorizadas diretamente ali (sem
-// descer em subcategorias), então alguns temas podem trazer poucos
-// resultados dependendo do idioma — nesse caso caímos pra aleatório.
+// Termos de busca por tema (não usa categoria da Wikipédia — a árvore
+// de categorias é inconsistente entre idiomas e a busca por categoria
+// direta quase sempre volta vazia. Busca por palavra-chave é muito
+// mais confiável.)
 export const TOPICS = [
-  { id: 'random',     label: 'Aleatório',        category: null },
-  { id: 'science',    label: 'Ciência',          category: { en: 'Science',    es: 'Ciencia' } },
-  { id: 'technology', label: 'Tecnologia',       category: { en: 'Technology', es: 'Tecnología' } },
-  { id: 'sports',     label: 'Esportes',         category: { en: 'Sports',     es: 'Deporte' } },
-  { id: 'history',    label: 'História',         category: { en: 'History',   es: 'Historia' } },
-  { id: 'politics',   label: 'Política',         category: { en: 'Politics',  es: 'Política' } },
-  { id: 'arts',       label: 'Arte e cultura',   category: { en: 'Arts',      es: 'Arte' } },
-  { id: 'geography',  label: 'Geografia',        category: { en: 'Geography', es: 'Geografía' } },
+  { id: 'random',     label: 'Aleatório',        query: null },
+  { id: 'science',    label: 'Ciência',          query: { en: 'science',             es: 'ciencia' } },
+  { id: 'technology', label: 'Tecnologia',       query: { en: 'technology',          es: 'tecnología' } },
+  { id: 'sports',     label: 'Esportes',         query: { en: 'sport',               es: 'deporte' } },
+  { id: 'history',    label: 'História',         query: { en: 'history',             es: 'historia' } },
+  { id: 'politics',   label: 'Política',         query: { en: 'politics government', es: 'política gobierno' } },
+  { id: 'arts',       label: 'Arte e cultura',   query: { en: 'art culture',         es: 'arte cultura' } },
+  { id: 'geography',  label: 'Geografia',        query: { en: 'geography',           es: 'geografía' } },
 ];
 
 function shuffle(arr) {
@@ -40,6 +46,41 @@ function pageUrl(langCode, title) {
   return `https://${langCode}.wikipedia.org/wiki/${encodeURIComponent(title.replace(/ /g, '_'))}`;
 }
 
+// Limpa o texto: tira parênteses com alfabeto/fonética estrangeira
+// (ex.: "Tóquio (東京, Tōkyō)"), cabeçalhos de seção que sobrarem,
+// marcadores de citação tipo [1], e normaliza espaçamento.
+function cleanExtract(text) {
+  let t = text;
+
+  // parênteses no formato "(Idioma: termo)" — glosa em outro idioma
+  // que usa o mesmo alfabeto, então o filtro de caractere abaixo não
+  // pegaria sozinho
+  t = t.replace(/\s?\((?:German|French|Italian|Portuguese|Latin|Russian|Arabic|Hebrew|Chinese|Japanese|Korean|Greek|Dutch|Polish|Turkish|Hindi|Swedish|Norwegian|Danish|alemán|francés|italiano|portugués|latín|ruso|árabe|hebreo|chino|japonés|coreano|griego|neerlandés|polaco|turco|hindi|sueco|noruego|danés)\s*:[^()]*\)/gi, '');
+
+  // parênteses contendo caractere fora do latino básico/estendido
+  // (pega grego, cirílico, hebraico, árabe, CJK, hangul, IPA, marcas
+  // de tom — mas preserva acentos comuns de espanhol/português, que
+  // ficam bem abaixo dessa faixa)
+  t = t.replace(/\s?\([^()]*[\u0250-\uFFFF][^()]*\)/g, '');
+  // parênteses vazios ou só com pontuação que sobraram da limpeza acima
+  t = t.replace(/\s?\([\s,;:–—-]*\)/g, '');
+
+  // cabeçalhos de seção residuais ("== Ver também ==")
+  t = t.replace(/^=+\s*.*?\s*=+$/gm, '');
+  // marcadores de citação
+  t = t.replace(/\[\d+\]/g, '');
+  // espaço antes de pontuação que sobrou de alguma remoção
+  t = t.replace(/\s+([.,;:!?])/g, '$1');
+
+  // normaliza espaçamento
+  t = t.replace(/[ \t]+/g, ' ');
+  t = t.replace(/ *\n */g, '\n');
+  t = t.replace(/\n{2,}/g, '\n\n');
+  return t.trim();
+}
+
+const DISAMBIG_RE = /^[A-ZÁÉÍÓÚÑ][\wÀ-ÿ' -]* (may refer to|puede referirse a|puede hacer referencia a)/i;
+
 async function fetchCandidates(langCode, topicId, count) {
   const topic = TOPICS.find(t => t.id === topicId) || TOPICS[0];
   const base = `https://${langCode}.wikipedia.org/w/api.php`;
@@ -49,20 +90,21 @@ async function fetchCandidates(langCode, topicId, count) {
     origin: '*',
     prop: 'extracts',
     explaintext: '1',
+    exintro: '1',
     exlimit: 'max',
-    exchars: '6000',
   });
 
-  if (!topic.category) {
+  if (!topic.query) {
     params.set('generator', 'random');
     params.set('grnnamespace', '0');
     params.set('grnlimit', String(count));
   } else {
-    const categoryName = topic.category[langCode] || topic.category.en;
+    const q = topic.query[langCode] || topic.query.en;
     params.set('generator', 'search');
     params.set('gsrnamespace', '0');
     params.set('gsrlimit', String(count));
-    params.set('gsrsearch', `incategory:"${categoryName}"`);
+    params.set('gsrsearch', q);
+    params.set('gsrsort', 'relevance');
   }
 
   const res = await fetch(`${base}?${params.toString()}`);
@@ -72,12 +114,9 @@ async function fetchCandidates(langCode, topicId, count) {
   if (!pages) return [];
 
   return Object.values(pages)
-    .filter(p => p.extract && countWords(p.extract) >= 40)
-    .map(p => ({
-      title: p.title,
-      extract: p.extract.trim(),
-      url: pageUrl(langCode, p.title),
-    }));
+    .filter(p => p.extract)
+    .map(p => ({ title: p.title, extract: cleanExtract(p.extract), url: pageUrl(langCode, p.title) }))
+    .filter(p => countWords(p.extract) >= 35 && !DISAMBIG_RE.test(p.extract));
 }
 
 function trimToWordCount(text, targetWords) {
@@ -111,7 +150,10 @@ function trimToWordCount(text, targetWords) {
 
 /**
  * Monta um roteiro de leitura com aproximadamente targetWords palavras,
- * combinando um ou mais artigos até chegar perto do tamanho pedido.
+ * concatenando um ou mais resumos de artigos até chegar perto do
+ * tamanho pedido. Cada resumo é um texto corrido completo (começo,
+ * meio e fim), então mesmo um roteiro com vários deles lê como uma
+ * sequência de trechos completos, não um corte no meio de um artigo.
  */
 export async function buildScript(langCode, topicId, targetWords) {
   const usedTitles = new Set();
@@ -123,7 +165,7 @@ export async function buildScript(langCode, topicId, targetWords) {
 
   while (totalWords < targetWords * 0.9 && attempts < 6) {
     attempts++;
-    let candidates = await fetchCandidates(langCode, effectiveTopic, 10);
+    let candidates = await fetchCandidates(langCode, effectiveTopic, 15);
     candidates = shuffle(candidates).filter(c => !usedTitles.has(c.title));
 
     if (candidates.length === 0) {
