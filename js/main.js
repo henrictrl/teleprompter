@@ -32,22 +32,30 @@ const libraryEmpty = document.getElementById('library-empty');
 const statsSummary = document.getElementById('stats-summary');
 const historyList = document.getElementById('history-list');
 const historyEmpty = document.getElementById('history-empty');
+const voiceSummary = document.getElementById('voice-summary');
+const voiceHistoryList = document.getElementById('voice-history-list');
+const voiceHistoryEmpty = document.getElementById('voice-history-empty');
 
 // ---------- refs: tela de leitura ----------
 const screenSetup = document.getElementById('screen-setup');
 const screenReader = document.getElementById('screen-reader');
 const viewport = document.getElementById('viewport');
 const contentEl = document.getElementById('content');
+const readerTitle = document.getElementById('reader-title');
 const timecodeEl = document.getElementById('timecode');
 const progressFill = document.getElementById('progress-fill');
 const btnPlayPause = document.getElementById('btn-playpause');
 const wpmReadout = document.getElementById('wpm-readout');
 const btnBack = document.getElementById('btn-back');
+const btnFullscreen = document.getElementById('btn-fullscreen');
+const micStatusDot = document.getElementById('mic-status-dot');
 const btnSpeedUp = document.getElementById('btn-speed-up');
 const btnSpeedDown = document.getElementById('btn-speed-down');
 const btnFontUp = document.getElementById('btn-font-up');
 const btnFontDown = document.getElementById('btn-font-down');
 const btnMic = document.getElementById('btn-mic');
+const micLabel = document.getElementById('mic-label');
+const voiceScore = document.getElementById('voice-score');
 const liveCaption = document.getElementById('live-caption');
 const progressTrack = document.getElementById('progress-track');
 
@@ -82,6 +90,12 @@ function formatTime(seconds) {
 
 function topicLabel(id) {
   return (TOPICS.find(t => t.id === id) || {}).label || id;
+}
+
+function accuracyTier(pct) {
+  if (pct >= 85) return 'good';
+  if (pct >= 60) return 'mid';
+  return 'low';
 }
 
 // ---------- tela de configuração ----------
@@ -206,29 +220,48 @@ function renderTopMissed(stats) {
   `).join('');
 }
 
-function renderHistory() {
+function renderReports() {
   const stats = getStats();
+  const history = getHistory();
+
+  // ---- histórico de leitura (geral) ----
   statsSummary.innerHTML = `
     <div class="stat-item"><span class="stat-value mono">${stats.totalSessions}</span><span class="stat-label">sessões</span></div>
     <div class="stat-item"><span class="stat-value mono">${stats.totalMinutes}</span><span class="stat-label">min. lidos</span></div>
     <div class="stat-item"><span class="stat-value mono">${stats.completionRate}%</span><span class="stat-label">concluídas</span></div>
-    <div class="stat-item"><span class="stat-value mono">${stats.avgAccuracy === null ? '—' : stats.avgAccuracy + '%'}</span><span class="stat-label">precisão de voz</span></div>
   `;
-  renderTopMissed(stats);
-
-  const history = getHistory();
   historyEmpty.style.display = history.length ? 'none' : '';
   historyList.innerHTML = history.slice(0, 8).map(h => {
     const mins = Math.round(((h.activeSeconds || 0) / 60) * 10) / 10;
-    const hasMic = h.micUsed && (h.wordsTracked || 0) > 0;
-    const accuracy = hasMic ? Math.round((h.wordsCorrect / h.wordsTracked) * 100) : null;
-
     const metaParts = [LANGS[h.lang]?.label || h.lang, `${mins} min`];
     if (h.completed) metaParts.push('concluído');
-    if (accuracy !== null) metaParts.push(`${accuracy}% reconhecido`);
     metaParts.push(formatRelativeDate(h.at));
+    return `
+      <li class="list-item">
+        <div class="list-item-main">
+          <div class="list-item-title">${escapeHTML(h.title || 'Texto')}</div>
+          <div class="list-item-meta">${metaParts.join(' · ')}</div>
+        </div>
+      </li>
+    `;
+  }).join('');
 
-    const missedTally = hasMic && h.missedWords && h.missedWords.length ? tallyWords(h.missedWords) : [];
+  // ---- reconhecimento de voz (área própria) ----
+  const accTier = stats.avgAccuracy === null ? '' : `is-${accuracyTier(stats.avgAccuracy)}`;
+  voiceSummary.innerHTML = `
+    <div class="stat-item"><span class="stat-value mono ${accTier}">${stats.avgAccuracy === null ? '—' : stats.avgAccuracy + '%'}</span><span class="stat-label">precisão média</span></div>
+    <div class="stat-item"><span class="stat-value mono">${stats.micSessionsCount}</span><span class="stat-label">leituras com voz</span></div>
+  `;
+  renderTopMissed(stats);
+
+  const voiceSessions = history.filter(h => h.micUsed && (h.wordsTracked || 0) > 0);
+  voiceHistoryEmpty.style.display = voiceSessions.length ? 'none' : '';
+  voiceHistoryList.innerHTML = voiceSessions.slice(0, 8).map(h => {
+    const accuracy = Math.round((h.wordsCorrect / h.wordsTracked) * 100);
+    const tier = accuracyTier(accuracy);
+    const metaParts = [LANGS[h.lang]?.label || h.lang, `<span class="is-${tier}">${accuracy}% reconhecido</span>`, formatRelativeDate(h.at)];
+
+    const missedTally = h.missedWords && h.missedWords.length ? tallyWords(h.missedWords) : [];
     const detail = missedTally.length ? `
       <details class="history-detail">
         <summary>${missedTally.length} palavra${missedTally.length === 1 ? '' : 's'} não reconhecida${missedTally.length === 1 ? '' : 's'}</summary>
@@ -282,19 +315,26 @@ function openReader(script) {
   sessionCorrectCount = 0;
   sessionMissedWords = [];
   if (micOn) { speech.stop(); setMicState(false); }
+  liveCaption.textContent = '';
+  voiceScore.textContent = '';
+  voiceScore.className = 'voice-score mono';
   screenSetup.classList.remove('is-active');
   screenReader.classList.add('is-active');
   contentEl.lang = script.lang;
+  readerTitle.textContent = script.title || '';
   renderContentText(script.text);
-  requestAnimationFrame(() => {
-    prompter.reset();
-    prompter.setContentMeta(script.wordCount);
-    prompter.setWpm(state.wpmSetting);
-    wpmReadout.textContent = prompter.getWpm();
-    progressFill.style.width = '0%';
-    syncPlayButton();
-    updateTimecode();
-  });
+  // Sem requestAnimationFrame aqui de propósito: ler scrollHeight logo
+  // abaixo já força o navegador a calcular o layout do texto novo na
+  // hora. Adiar pro próximo frame deixava uma brecha entre a tela ficar
+  // clicável e o motor de leitura estar pronto — clicar em play bem
+  // rápido nessa janela cancelava o play sem avisar nada.
+  prompter.reset();
+  prompter.setContentMeta(script.wordCount);
+  prompter.setWpm(state.wpmSetting);
+  wpmReadout.textContent = prompter.getWpm();
+  progressFill.style.width = '0%';
+  syncPlayButton();
+  updateTimecode();
 }
 
 function logSession(completed) {
@@ -315,7 +355,7 @@ function logSession(completed) {
     wordsTracked,
     missedWords: sessionMissedWords.slice(0, 80),
   });
-  renderHistory();
+  renderReports();
 }
 
 function closeReader() {
@@ -381,7 +421,7 @@ progressTrack.addEventListener('pointerdown', (e) => {
   prompter.pause();
   syncPlayButton();
   progressTrack.classList.add('is-scrubbing');
-  progressTrack.setPointerCapture(e.pointerId);
+  if (progressTrack.setPointerCapture) progressTrack.setPointerCapture(e.pointerId);
   applySeek(e);
 });
 progressTrack.addEventListener('pointermove', (e) => {
@@ -410,6 +450,28 @@ function markWord(i, state_) {
   else sessionMissedWords.push(el.textContent);
 }
 
+function updateCurrentWordHighlight() {
+  wordEls.forEach(el => el.classList.remove('is-current'));
+  const el = wordEls[expectedIndex];
+  if (el) el.classList.add('is-current');
+}
+
+function clearCurrentWordHighlight() {
+  wordEls.forEach(el => el.classList.remove('is-current'));
+}
+
+function updateVoiceScore() {
+  const tracked = sessionCorrectCount + sessionMissedWords.length;
+  if (!tracked) {
+    voiceScore.textContent = '';
+    voiceScore.className = 'voice-score mono';
+    return;
+  }
+  const pct = Math.round((sessionCorrectCount / tracked) * 100);
+  voiceScore.textContent = `${sessionCorrectCount}/${tracked} · ${pct}%`;
+  voiceScore.className = `voice-score mono is-${accuracyTier(pct)}`;
+}
+
 function handleFinalChunk(text) {
   const LOOKAHEAD = 8;
   const spoken = tokenize(text).map(normalizeWord).filter(Boolean);
@@ -426,6 +488,8 @@ function handleFinalChunk(text) {
     // se não achar no horizonte de busca, ignora — provavelmente foi o
     // reconhecedor entendendo errado, não vale marcar como erro do usuário
   });
+  updateCurrentWordHighlight();
+  updateVoiceScore();
 }
 
 const speech = createSpeechChecker({
@@ -443,8 +507,15 @@ function setMicState(on) {
   micOn = on;
   if (on) micUsedThisSession = true;
   btnMic.setAttribute('aria-pressed', on ? 'true' : 'false');
+  micLabel.textContent = on ? 'Ouvindo…' : 'Voz';
+  micStatusDot.classList.toggle('is-active', on);
   contentEl.classList.toggle('mic-active', on);
-  if (!on) liveCaption.textContent = '';
+  if (on) {
+    updateCurrentWordHighlight();
+  } else {
+    liveCaption.textContent = '';
+    clearCurrentWordHighlight();
+  }
 }
 
 if (!micIsSupported()) {
@@ -464,12 +535,21 @@ btnMic.addEventListener('click', () => {
   if (ok) setMicState(true);
 });
 
+// ---------- tela cheia (luz verde da barra de título) ----------
+btnFullscreen.addEventListener('click', () => {
+  if (document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
+  } else {
+    document.documentElement.requestFullscreen().catch(() => {});
+  }
+});
+
 document.addEventListener('keydown', (e) => {
   if (!screenReader.classList.contains('is-active')) return;
   if (e.code === 'Space') {
     e.preventDefault();
     prompter.toggle();
-    btnPlayPause.textContent = prompter.isPlaying() ? '❚❚' : '▶';
+    syncPlayButton();
   } else if (e.code === 'ArrowUp') {
     e.preventDefault();
     bumpSpeed(20);
@@ -484,4 +564,4 @@ document.addEventListener('keydown', (e) => {
 
 // ---------- inicialização ----------
 renderLibrary();
-renderHistory();
+renderReports();
