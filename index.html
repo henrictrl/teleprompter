@@ -67,9 +67,16 @@
       <div class="card">
         <div class="card-head"><h2>Histórico</h2></div>
         <div id="stats-summary" class="stats-grid"></div>
-        <div id="top-missed" class="top-missed"></div>
         <ul id="history-list" class="list list-compact"></ul>
         <p id="history-empty" class="empty-note">Ainda sem sessões registradas.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-head"><h2>Reconhecimento de voz</h2></div>
+        <div id="voice-summary" class="stats-grid cols-2"></div>
+        <div id="top-missed" class="top-missed"></div>
+        <ul id="voice-history-list" class="list list-compact"></ul>
+        <p id="voice-history-empty" class="empty-note">Ainda sem leituras com o microfone ativado.</p>
       </div>
 
       <p class="foot-note">Atalhos na leitura: <span class="kbd">espaço</span> play/pause · <span class="kbd">↑</span><span class="kbd">↓</span> velocidade · <span class="kbd">esc</span> voltar</p>
@@ -82,9 +89,13 @@
     <div class="reader">
 
       <div class="reader-top">
-        <button type="button" id="btn-back" class="icon-btn" aria-label="Voltar">←</button>
+        <div class="traffic-lights" role="group" aria-label="Controles da janela">
+          <button type="button" id="btn-back" class="tl-dot tl-red" aria-label="Voltar" title="Voltar"></button>
+          <span id="mic-status-dot" class="tl-dot tl-yellow" aria-hidden="true" title="Indicador do microfone"></span>
+          <button type="button" id="btn-fullscreen" class="tl-dot tl-green" aria-label="Tela cheia" title="Tela cheia"></button>
+        </div>
+        <div class="reader-title mono" id="reader-title"></div>
         <div class="timecode mono" id="timecode">00:00 / 00:00</div>
-        <div class="reader-top-spacer"></div>
       </div>
 
       <div class="viewport" id="viewport">
@@ -97,7 +108,16 @@
         <div class="progress-fill" id="progress-fill"></div>
       </div>
 
-      <div id="live-caption" class="live-caption" aria-live="polite"></div>
+      <div class="voice-panel">
+        <button type="button" id="btn-mic" class="voice-toggle" aria-pressed="false" aria-label="Ativar reconhecimento de voz">
+          <span class="mic-dot" aria-hidden="true"></span>
+          <span id="mic-label">Voz</span>
+        </button>
+        <div class="voice-live">
+          <span id="voice-score" class="voice-score mono"></span>
+          <span id="live-caption" class="voice-caption" aria-live="polite"></span>
+        </div>
+      </div>
 
       <div class="reader-bottom">
         <button type="button" id="btn-speed-down" class="icon-btn" aria-label="Diminuir velocidade">−</button>
@@ -105,9 +125,6 @@
         <button type="button" id="btn-speed-up" class="icon-btn" aria-label="Aumentar velocidade">+</button>
         <div class="wpm-readout mono"><span id="wpm-readout">130</span> ppm</div>
         <div class="reader-bottom-spacer"></div>
-        <button type="button" id="btn-mic" class="icon-btn text-btn mic-btn" aria-pressed="false" aria-label="Ativar reconhecimento de voz">
-          <span class="mic-dot" aria-hidden="true"></span>Voz
-        </button>
         <button type="button" id="btn-font-down" class="icon-btn text-btn" aria-label="Diminuir fonte">A−</button>
         <button type="button" id="btn-font-up" class="icon-btn text-btn" aria-label="Aumentar fonte">A+</button>
       </div>

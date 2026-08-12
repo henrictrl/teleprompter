@@ -13,18 +13,31 @@ Site estático, sem servidor — roda 100% no navegador.
   perto desse tamanho, sempre tentando parar no fim de uma frase.
 - **Leitura:** rolagem automática calculada pra terminar no tempo certo,
   com play/pause e velocidade ajustável ao vivo (60 a 600 palavras por
-  minuto).
-- **Reconhecimento de voz:** botão "Voz" na tela de leitura ativa o
-  microfone (Web Speech API do navegador) e vai marcando, palavra por
-  palavra, o que ele reconheceu que você leu — sem sair do preto e
-  branco: palavra ainda não confirmada fica apagada, confirmada fica
-  clara, pulada fica riscada. Mostra também uma legenda ao vivo com o
-  que foi entendido.
-- **Cache e histórico:** tudo fica salvo no `localStorage` do navegador —
-  textos gerados (pra reler depois) e o histórico de sessões (pra ver
-  estatística de uso). Nada é enviado pra nenhum servidor (a única
-  exceção é o áudio do microfone, que o navegador manda pro serviço de
-  reconhecimento de fala dele — no Chrome, servidores do Google).
+  minuto). A barra de progresso funciona como a de vídeo: clica ou
+  arrasta pra pular pra qualquer ponto do texto.
+- **Reconhecimento de voz, numa área própria:** dentro do teleprompter,
+  a faixa de voz fica separada dos controles de leitura, com placar ao
+  vivo (acertos/total e %) e legenda do que foi ouvido. A palavra que
+  você deveria estar lendo agora pisca em amarelo — a palavra atual
+  correta acende verde ao ser confirmada, a que passou sem confirmar
+  fica vermelha e riscada. A luz amarela da barra de título funciona
+  como indicador passivo de "microfone ouvindo", junto do botão "Voz".
+- **Visual inspirado no macOS:** cartões em vidro fosco (blur +
+  translucidez), fonte do sistema (renderiza a San Francisco de
+  verdade em Mac), controles segmentados nativos, e uma barra de
+  título de verdade no teleprompter — vermelho fecha, verde abre em
+  tela cheia (Fullscreen API), amarelo é o indicador de voz.
+- **Cache e histórico, em dois relatórios separados:** um card
+  "Histórico" com o geral (sessões, minutos, concluídas) e um card
+  "Reconhecimento de voz" à parte — precisão média, quantas leituras
+  usaram o microfone, um painel de "palavras que mais escapam" por
+  idioma (juntando todas as sessões), e por sessão individual, um "+"
+  escondido com a lista de palavras não reconhecidas daquela leitura.
+  Números coloridos por faixa: verde ≥85%, amarelo 60–84%, vermelho
+  abaixo disso. Tudo fica no `localStorage` do navegador — nada é
+  enviado pra nenhum servidor (a única exceção é o áudio do microfone,
+  que o navegador manda pro serviço de reconhecimento de fala dele —
+  no Chrome, servidores do Google).
 
 ## Rodar localmente
 
