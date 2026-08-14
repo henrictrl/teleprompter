@@ -813,17 +813,22 @@ function openCorrectionModal({ word, lang, onFixed, onClose }) {
 }
 
 function stopCorrectionSpeech() {
-  if (correctionSpeech) { correctionSpeech.stop(); correctionSpeech = null; }
-  correctionMic.setAttribute('aria-pressed', 'false');
-  correctionMicLabel.textContent = 'Ouvir';
+  if (correctionSpeech) { 
+    try { correctionSpeech.stop(); } catch (e) {}
+    correctionSpeech = null; 
+  }
+  try {
+    if (correctionMic) correctionMic.setAttribute('aria-pressed', 'false');
+    if (correctionMicLabel) correctionMicLabel.textContent = 'Ouvir';
+  } catch (e) {}
 }
 
 function closeCorrectionModal() {
-  stopCorrectionSpeech();
-  correctionOverlay.hidden = true;
+  try { stopCorrectionSpeech(); } catch (e) {}
+  try { if (correctionOverlay) correctionOverlay.hidden = true; } catch (e) {}
   const cb = correctionState && correctionState.onClose;
   correctionState = null;
-  if (cb) cb();
+  try { if (cb) cb(); } catch (e) {}
 }
 
 function markCorrectionFixed() {
@@ -838,35 +843,50 @@ function markCorrectionFixed() {
 }
 
 correctionMic.addEventListener('click', () => {
-  if (!correctionState || !micIsSupported()) return;
-  if (correctionSpeech) { stopCorrectionSpeech(); return; }
-  const speechLang = (LANGS[correctionState.lang] || {}).speechLang || 'en-US';
-  const targetNorm = normalizeWord(correctionState.word);
-  correctionSpeech = createSpeechChecker({
-    onTranscript: (text) => {
-      correctionCaption.textContent = text;
-      const heard = tokenize(text).map(normalizeWord).filter(Boolean);
-      if (heard.includes(targetNorm)) markCorrectionFixed();
-    },
-    onError: (err) => {
-      if (err === 'not-allowed' || err === 'service-not-allowed') {
-        correctionStatus.textContent = 'Permissão de microfone negada.';
-      }
-    },
-  });
-  const ok = correctionSpeech.start(speechLang);
-  if (ok) {
-    correctionMic.setAttribute('aria-pressed', 'true');
-    correctionMicLabel.textContent = 'Ouvindo…';
-    correctionStatus.textContent = 'Ouvindo…';
-  } else {
-    correctionSpeech = null;
-  }
+  try {
+    if (!correctionState || !micIsSupported()) return;
+    if (correctionSpeech) { stopCorrectionSpeech(); return; }
+    const speechLang = (LANGS[correctionState.lang] || {}).speechLang || 'en-US';
+    const targetNorm = normalizeWord(correctionState.word);
+    correctionSpeech = createSpeechChecker({
+      onTranscript: (text) => {
+        try {
+          if (correctionCaption) correctionCaption.textContent = text;
+          const heard = tokenize(text).map(normalizeWord).filter(Boolean);
+          if (heard.includes(targetNorm)) markCorrectionFixed();
+        } catch (e) {}
+      },
+      onError: (err) => {
+        try {
+          if (err === 'not-allowed' || err === 'service-not-allowed') {
+            if (correctionStatus) correctionStatus.textContent = 'Permissão de microfone negada.';
+          }
+        } catch (e) {}
+      },
+    });
+    const ok = correctionSpeech.start(speechLang);
+    if (ok) {
+      if (correctionMic) correctionMic.setAttribute('aria-pressed', 'true');
+      if (correctionMicLabel) correctionMicLabel.textContent = 'Ouvindo…';
+      if (correctionStatus) correctionStatus.textContent = 'Ouvindo…';
+    } else {
+      correctionSpeech = null;
+    }
+  } catch (e) { closeCorrectionModal(); }
 });
-correctionManual.addEventListener('click', markCorrectionFixed);
-correctionClose.addEventListener('click', closeCorrectionModal);
-correctionOverlay.addEventListener('click', (e) => {
-  if (e.target === correctionOverlay) closeCorrectionModal();
+correctionManual.addEventListener('click', () => { 
+  try { markCorrectionFixed(); } catch (e) { 
+    closeCorrectionModal(); 
+  } 
+});
+correctionClose.addEventListener('click', () => { 
+  try { closeCorrectionModal(); } catch (e) { 
+    if (correctionOverlay) correctionOverlay.hidden = true; 
+    correctionState = null; 
+  } 
+});
+correctionOverlay.addEventListener('click', (e) => { 
+  try { if (e.target === correctionOverlay) closeCorrectionModal(); } catch (e) {} 
 });
 
 // ---------- atalhos de teclado ----------
