@@ -509,6 +509,7 @@ button, [role="radio"], select, input[type="range"]{
   font-size:12px;
 }
 .mini-player-close:hover{ background:var(--red-dim); color:var(--red); }
+.mini-player[hidden]{ display:none; }
 
 /* ===== popup de correção de palavra ===== */
 .modal-overlay{
@@ -523,6 +524,7 @@ button, [role="radio"], select, input[type="range"]{
   justify-content:center;
   padding:20px;
 }
+.modal-overlay[hidden]{ display:none; }
 .modal-dialog{
   position:relative;
   width:100%;
