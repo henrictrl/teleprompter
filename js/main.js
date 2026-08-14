@@ -460,7 +460,6 @@ function logSession(completed) {
 }
 
 function endSessionCommon() {
-  closeCorrectionModal();
   prompter.pause();
   if (micOn) { speech.stop(); setMicState(false); }
   stopSilenceWatch();
@@ -775,30 +774,19 @@ function openWordCorrectionInReader(i) {
     word,
     lang: currentScript.lang,
     onFixed: () => {
-      try {
-        markWord(i, 'correct');
-        updateCurrentWordHighlight();
-        updateVoiceScore();
-        fixMissedWord(currentScript.lang, word);
-        // renderReports é pesado - executar de forma assíncrona
-        setTimeout(() => {
-          try { renderReports(); } catch (e) { console.error('Error rendering reports:', e); }
-        }, 0);
-      } catch (e) {
-        console.error('Error in onFixed:', e);
-      }
+      markWord(i, 'correct');
+      updateCurrentWordHighlight();
+      updateVoiceScore();
+      fixMissedWord(currentScript.lang, word);
+      renderReports();
     },
     onClose: () => {
-      try {
-        if (micWasOn) {
-          const speechLang = (LANGS[currentScript.lang] || {}).speechLang || 'en-US';
-          const ok = speech.start(speechLang);
-          if (ok) setMicState(true);
-        }
-        if (wasPlaying) { prompter.play(); syncPlayButton(); }
-      } catch (e) {
-        console.error('Error in onClose:', e);
+      if (micWasOn) {
+        const speechLang = (LANGS[currentScript.lang] || {}).speechLang || 'en-US';
+        const ok = speech.start(speechLang);
+        if (ok) setMicState(true);
       }
+      if (wasPlaying) { prompter.play(); syncPlayButton(); }
     },
   });
 }
@@ -808,115 +796,76 @@ let correctionState = null;
 let correctionSpeech = null;
 
 function openCorrectionModal({ word, lang, onFixed, onClose }) {
-  if (correctionState && !correctionOverlay.hidden) return;
-
-  stopCorrectionSpeech();
   correctionState = { word, lang, onFixed, onClose, fixed: false };
   correctionWordEl.textContent = word;
   correctionStatus.textContent = 'Toque em "Ouvir" e fale a palavra em voz alta.';
   correctionStatus.className = 'correction-status';
   correctionCaption.textContent = '';
-  correctionMic.disabled = !micIsSupported();
-  correctionMic.title = micIsSupported() ? '' : 'Reconhecimento de voz não é suportado nesse navegador.';
   correctionMic.setAttribute('aria-pressed', 'false');
   correctionMicLabel.textContent = 'Ouvir';
   correctionManual.disabled = false;
+  if (!micIsSupported()) {
+    correctionMic.disabled = true;
+    correctionMic.title = 'Reconhecimento de voz não é suportado nesse navegador.';
+  }
   correctionOverlay.hidden = false;
 }
 
 function stopCorrectionSpeech() {
-  if (correctionSpeech) {
-    try { correctionSpeech.stop(); } catch (e) {}
-    correctionSpeech = null;
-  }
-  try {
-    if (correctionMic) correctionMic.setAttribute('aria-pressed', 'false');
-    if (correctionMicLabel) correctionMicLabel.textContent = 'Ouvir';
-  } catch (e) {}
+  if (correctionSpeech) { correctionSpeech.stop(); correctionSpeech = null; }
+  correctionMic.setAttribute('aria-pressed', 'false');
+  correctionMicLabel.textContent = 'Ouvir';
 }
 
 function closeCorrectionModal() {
-  const current = correctionState;
-  const cb = current && current.onClose;
   stopCorrectionSpeech();
+  correctionOverlay.hidden = true;
+  const cb = correctionState && correctionState.onClose;
   correctionState = null;
-  try { if (correctionOverlay) correctionOverlay.hidden = true; } catch (e) {}
-  try { if (cb) cb(); } catch (e) {}
+  if (cb) cb();
 }
 
 function markCorrectionFixed() {
-  const current = correctionState;
-  if (!current || current.fixed) return;
-  current.fixed = true;
-  try { stopCorrectionSpeech(); } catch (e) {}
-
-  try {
-    if (correctionStatus) correctionStatus.textContent = 'Reconhecido! Palavra corrigida.';
-    if (correctionStatus) correctionStatus.className = 'correction-status is-good';
-    if (correctionManual) correctionManual.disabled = true;
-  } catch (e) {}
-
-  const safeState = current;
-  setTimeout(() => {
-    try {
-      if (correctionState !== safeState) return;
-      if (safeState.onFixed) safeState.onFixed();
-    } catch (e) { console.error('Error in onFixed:', e); }
-
-    setTimeout(() => {
-      if (correctionState === safeState) closeCorrectionModal();
-    }, 100);
-  }, 500);
+  if (!correctionState || correctionState.fixed) return;
+  correctionState.fixed = true;
+  stopCorrectionSpeech();
+  correctionStatus.textContent = 'Reconhecido! Palavra corrigida.';
+  correctionStatus.className = 'correction-status is-good';
+  correctionManual.disabled = true;
+  if (correctionState.onFixed) correctionState.onFixed();
+  setTimeout(() => { if (correctionState) closeCorrectionModal(); }, 900);
 }
 
 correctionMic.addEventListener('click', () => {
-  try {
-    const current = correctionState;
-    if (!current || !micIsSupported()) return;
-    if (correctionSpeech) { stopCorrectionSpeech(); return; }
-    const speechLang = (LANGS[current.lang] || {}).speechLang || 'en-US';
-    const targetNorm = normalizeWord(current.word);
-    correctionSpeech = createSpeechChecker({
-      onTranscript: (text) => {
-        try {
-          if (correctionState !== current) return;
-          if (correctionCaption) correctionCaption.textContent = text;
-          const heard = tokenize(text).map(normalizeWord).filter(Boolean);
-          if (heard.includes(targetNorm)) markCorrectionFixed();
-        } catch (e) {}
-      },
-      onError: (err) => {
-        try {
-          if (correctionState !== current) return;
-          if (err === 'not-allowed' || err === 'service-not-allowed') {
-            if (correctionStatus) correctionStatus.textContent = 'Permissão de microfone negada.';
-          }
-        } catch (e) {}
-      },
-    });
-    const ok = correctionSpeech.start(speechLang);
-    if (ok) {
-      if (correctionMic) correctionMic.setAttribute('aria-pressed', 'true');
-      if (correctionMicLabel) correctionMicLabel.textContent = 'Ouvindo…';
-      if (correctionStatus) correctionStatus.textContent = 'Ouvindo…';
-    } else {
-      correctionSpeech = null;
-    }
-  } catch (e) { closeCorrectionModal(); }
-});
-correctionManual.addEventListener('click', () => {
-  try { markCorrectionFixed(); } catch (e) {
-    closeCorrectionModal();
+  if (!correctionState || !micIsSupported()) return;
+  if (correctionSpeech) { stopCorrectionSpeech(); return; }
+  const speechLang = (LANGS[correctionState.lang] || {}).speechLang || 'en-US';
+  const targetNorm = normalizeWord(correctionState.word);
+  correctionSpeech = createSpeechChecker({
+    onTranscript: (text) => {
+      correctionCaption.textContent = text;
+      const heard = tokenize(text).map(normalizeWord).filter(Boolean);
+      if (heard.includes(targetNorm)) markCorrectionFixed();
+    },
+    onError: (err) => {
+      if (err === 'not-allowed' || err === 'service-not-allowed') {
+        correctionStatus.textContent = 'Permissão de microfone negada.';
+      }
+    },
+  });
+  const ok = correctionSpeech.start(speechLang);
+  if (ok) {
+    correctionMic.setAttribute('aria-pressed', 'true');
+    correctionMicLabel.textContent = 'Ouvindo…';
+    correctionStatus.textContent = 'Ouvindo…';
+  } else {
+    correctionSpeech = null;
   }
 });
-correctionClose.addEventListener('click', () => {
-  try { closeCorrectionModal(); } catch (e) {
-    if (correctionOverlay) correctionOverlay.hidden = true;
-    correctionState = null;
-  }
-});
+correctionManual.addEventListener('click', markCorrectionFixed);
+correctionClose.addEventListener('click', closeCorrectionModal);
 correctionOverlay.addEventListener('click', (e) => {
-  try { if (e.target === correctionOverlay) closeCorrectionModal(); } catch (e) {}
+  if (e.target === correctionOverlay) closeCorrectionModal();
 });
 
 // ---------- atalhos de teclado ----------

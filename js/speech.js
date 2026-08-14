@@ -16,28 +16,9 @@ export function isSupported() {
 export function createSpeechChecker({ onTranscript, onError } = {}) {
   let recognition = null;
   let shouldListen = false;
-  let generation = 0;
-
-  function stop() {
-    shouldListen = false;
-    generation += 1;
-
-    const current = recognition;
-    recognition = null;
-    if (!current) return;
-
-    current.onresult = null;
-    current.onerror = null;
-    current.onend = null;
-
-    try { current.stop(); } catch (e) { /* ignore */ }
-  }
 
   function start(lang) {
     if (!SpeechRecognitionCtor) return false;
-
-    const localGeneration = generation;
-    stop();
 
     recognition = new SpeechRecognitionCtor();
     recognition.lang = lang;
@@ -45,7 +26,6 @@ export function createSpeechChecker({ onTranscript, onError } = {}) {
     recognition.interimResults = true;
 
     recognition.onresult = (event) => {
-      if (!shouldListen) return;
       let transcript = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
@@ -56,15 +36,15 @@ export function createSpeechChecker({ onTranscript, onError } = {}) {
     };
 
     recognition.onerror = (event) => {
-      if (!shouldListen) return;
       if (onError) onError(event.error);
     };
 
     // O navegador encerra sozinho depois de um tempo de silêncio —
     // se o usuário ainda não pausou o microfone, reinicia na hora.
     recognition.onend = () => {
-      if (!shouldListen || generation !== localGeneration) return;
-      try { recognition.start(); } catch (e) { /* já estava rodando */ }
+      if (shouldListen) {
+        try { recognition.start(); } catch (e) { /* já estava rodando */ }
+      }
     };
 
     shouldListen = true;
@@ -74,6 +54,14 @@ export function createSpeechChecker({ onTranscript, onError } = {}) {
     } catch (e) {
       shouldListen = false;
       return false;
+    }
+  }
+
+  function stop() {
+    shouldListen = false;
+    if (recognition) {
+      recognition.onend = null;
+      try { recognition.stop(); } catch (e) { /* ignore */ }
     }
   }
 
