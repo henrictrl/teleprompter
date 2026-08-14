@@ -808,25 +808,26 @@ let correctionState = null;
 let correctionSpeech = null;
 
 function openCorrectionModal({ word, lang, onFixed, onClose }) {
+  if (correctionState && !correctionOverlay.hidden) return;
+
+  stopCorrectionSpeech();
   correctionState = { word, lang, onFixed, onClose, fixed: false };
   correctionWordEl.textContent = word;
   correctionStatus.textContent = 'Toque em "Ouvir" e fale a palavra em voz alta.';
   correctionStatus.className = 'correction-status';
   correctionCaption.textContent = '';
+  correctionMic.disabled = !micIsSupported();
+  correctionMic.title = micIsSupported() ? '' : 'Reconhecimento de voz não é suportado nesse navegador.';
   correctionMic.setAttribute('aria-pressed', 'false');
   correctionMicLabel.textContent = 'Ouvir';
   correctionManual.disabled = false;
-  if (!micIsSupported()) {
-    correctionMic.disabled = true;
-    correctionMic.title = 'Reconhecimento de voz não é suportado nesse navegador.';
-  }
   correctionOverlay.hidden = false;
 }
 
 function stopCorrectionSpeech() {
-  if (correctionSpeech) { 
+  if (correctionSpeech) {
     try { correctionSpeech.stop(); } catch (e) {}
-    correctionSpeech = null; 
+    correctionSpeech = null;
   }
   try {
     if (correctionMic) correctionMic.setAttribute('aria-pressed', 'false');
@@ -835,43 +836,50 @@ function stopCorrectionSpeech() {
 }
 
 function closeCorrectionModal() {
-  try { stopCorrectionSpeech(); } catch (e) {}
-  try { if (correctionOverlay) correctionOverlay.hidden = true; } catch (e) {}
-  const cb = correctionState && correctionState.onClose;
+  const current = correctionState;
+  const cb = current && current.onClose;
+  stopCorrectionSpeech();
   correctionState = null;
+  try { if (correctionOverlay) correctionOverlay.hidden = true; } catch (e) {}
   try { if (cb) cb(); } catch (e) {}
 }
 
 function markCorrectionFixed() {
-  if (!correctionState || correctionState.fixed) return;
-  correctionState.fixed = true;
+  const current = correctionState;
+  if (!current || current.fixed) return;
+  current.fixed = true;
   try { stopCorrectionSpeech(); } catch (e) {}
-  
+
   try {
     if (correctionStatus) correctionStatus.textContent = 'Reconhecido! Palavra corrigida.';
     if (correctionStatus) correctionStatus.className = 'correction-status is-good';
     if (correctionManual) correctionManual.disabled = true;
   } catch (e) {}
-  
-  // Chamar callback pesado (renderReports) dentro do timeout para não bloquear UI
+
+  const safeState = current;
   setTimeout(() => {
     try {
-      if (correctionState && correctionState.onFixed) correctionState.onFixed();
+      if (correctionState !== safeState) return;
+      if (safeState.onFixed) safeState.onFixed();
     } catch (e) { console.error('Error in onFixed:', e); }
-    // Garantir que o modal feche mesmo se houver erro
-    setTimeout(() => { closeCorrectionModal(); }, 100);
+
+    setTimeout(() => {
+      if (correctionState === safeState) closeCorrectionModal();
+    }, 100);
   }, 500);
 }
 
 correctionMic.addEventListener('click', () => {
   try {
-    if (!correctionState || !micIsSupported()) return;
+    const current = correctionState;
+    if (!current || !micIsSupported()) return;
     if (correctionSpeech) { stopCorrectionSpeech(); return; }
-    const speechLang = (LANGS[correctionState.lang] || {}).speechLang || 'en-US';
-    const targetNorm = normalizeWord(correctionState.word);
+    const speechLang = (LANGS[current.lang] || {}).speechLang || 'en-US';
+    const targetNorm = normalizeWord(current.word);
     correctionSpeech = createSpeechChecker({
       onTranscript: (text) => {
         try {
+          if (correctionState !== current) return;
           if (correctionCaption) correctionCaption.textContent = text;
           const heard = tokenize(text).map(normalizeWord).filter(Boolean);
           if (heard.includes(targetNorm)) markCorrectionFixed();
@@ -879,6 +887,7 @@ correctionMic.addEventListener('click', () => {
       },
       onError: (err) => {
         try {
+          if (correctionState !== current) return;
           if (err === 'not-allowed' || err === 'service-not-allowed') {
             if (correctionStatus) correctionStatus.textContent = 'Permissão de microfone negada.';
           }
@@ -895,19 +904,19 @@ correctionMic.addEventListener('click', () => {
     }
   } catch (e) { closeCorrectionModal(); }
 });
-correctionManual.addEventListener('click', () => { 
-  try { markCorrectionFixed(); } catch (e) { 
-    closeCorrectionModal(); 
-  } 
+correctionManual.addEventListener('click', () => {
+  try { markCorrectionFixed(); } catch (e) {
+    closeCorrectionModal();
+  }
 });
-correctionClose.addEventListener('click', () => { 
-  try { closeCorrectionModal(); } catch (e) { 
-    if (correctionOverlay) correctionOverlay.hidden = true; 
-    correctionState = null; 
-  } 
+correctionClose.addEventListener('click', () => {
+  try { closeCorrectionModal(); } catch (e) {
+    if (correctionOverlay) correctionOverlay.hidden = true;
+    correctionState = null;
+  }
 });
-correctionOverlay.addEventListener('click', (e) => { 
-  try { if (e.target === correctionOverlay) closeCorrectionModal(); } catch (e) {} 
+correctionOverlay.addEventListener('click', (e) => {
+  try { if (e.target === correctionOverlay) closeCorrectionModal(); } catch (e) {}
 });
 
 // ---------- atalhos de teclado ----------
