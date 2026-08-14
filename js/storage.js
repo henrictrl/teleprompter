@@ -54,6 +54,34 @@ export function getHistory() {
   return loadJSON(HISTORY_KEY, []);
 }
 
+// Tira uma palavra da lista de "não reconhecidas" em TODAS as sessões
+// daquele idioma onde ela aparece, e reclassifica cada ocorrência como
+// acerto — usada tanto pelo popup de correção dentro do teleprompter
+// quanto pelo clique numa palavra errada no relatório da tela inicial.
+// Retorna quantas ocorrências foram corrigidas.
+export function fixMissedWord(lang, word) {
+  const target = word.toLowerCase();
+  const history = getHistory();
+  let fixedCount = 0;
+  history.forEach(h => {
+    if (h.lang !== lang || !h.missedWords || !h.missedWords.length) return;
+    const kept = [];
+    h.missedWords.forEach(w => {
+      if (w.toLowerCase() === target) fixedCount++;
+      else kept.push(w);
+    });
+    if (fixedCount > 0 && kept.length !== h.missedWords.length) {
+      const removed = h.missedWords.length - kept.length;
+      h.missedWords = kept;
+      h.wordsCorrect = (h.wordsCorrect || 0) + removed;
+      // wordsTracked não muda — a palavra já estava contabilizada, só
+      // trocou de coluna (de errada pra certa).
+    }
+  });
+  if (fixedCount > 0) saveJSON(HISTORY_KEY, history);
+  return fixedCount;
+}
+
 export function addHistoryEntry(entry) {
   const history = getHistory();
   history.unshift({

@@ -1,6 +1,11 @@
 // Usa a Web Speech API nativa do navegador — sem lib externa, sem chave.
 // Suporte real hoje: bom no Chrome/Edge, ausente no Firefox, parcial no Safari.
 // O áudio é processado na nuvem do navegador (ex.: Google, no Chrome).
+//
+// Um único retorno de transcrição por evento (não separa mais
+// provisório/final) — processa tudo que o reconhecedor entrega, o
+// quanto antes, e deixa quem chama decidir o que fazer com isso.
+// É o que dá a resposta rápida: não espera a frase "fechar" pra reagir.
 
 const SpeechRecognitionCtor = window.SpeechRecognition || window.webkitSpeechRecognition;
 
@@ -8,7 +13,7 @@ export function isSupported() {
   return !!SpeechRecognitionCtor;
 }
 
-export function createSpeechChecker({ onFinalChunk, onInterim, onError } = {}) {
+export function createSpeechChecker({ onTranscript, onError } = {}) {
   let recognition = null;
   let shouldListen = false;
 
@@ -21,16 +26,13 @@ export function createSpeechChecker({ onFinalChunk, onInterim, onError } = {}) {
     recognition.interimResults = true;
 
     recognition.onresult = (event) => {
+      let transcript = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
-        const text = (result[0] && result[0].transcript || '').trim();
-        if (!text) continue;
-        if (result.isFinal) {
-          if (onFinalChunk) onFinalChunk(text);
-        } else if (onInterim) {
-          onInterim(text);
-        }
+        transcript += (result[0] && result[0].transcript) || '';
       }
+      transcript = transcript.trim();
+      if (transcript && onTranscript) onTranscript(transcript);
     };
 
     recognition.onerror = (event) => {

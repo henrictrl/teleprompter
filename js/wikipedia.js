@@ -8,6 +8,7 @@
 // como texto corrido, com começo, meio e fim.
 
 export const LANGS = {
+  pt: { code: 'pt', label: 'Português', speechLang: 'pt-BR' },
   en: { code: 'en', label: 'English', speechLang: 'en-US' },
   es: { code: 'es', label: 'Español', speechLang: 'es-ES' },
 };
@@ -18,13 +19,13 @@ export const LANGS = {
 // mais confiável.)
 export const TOPICS = [
   { id: 'random',     label: 'Aleatório',        query: null },
-  { id: 'science',    label: 'Ciência',          query: { en: 'science',             es: 'ciencia' } },
-  { id: 'technology', label: 'Tecnologia',       query: { en: 'technology',          es: 'tecnología' } },
-  { id: 'sports',     label: 'Esportes',         query: { en: 'sport',               es: 'deporte' } },
-  { id: 'history',    label: 'História',         query: { en: 'history',             es: 'historia' } },
-  { id: 'politics',   label: 'Política',         query: { en: 'politics government', es: 'política gobierno' } },
-  { id: 'arts',       label: 'Arte e cultura',   query: { en: 'art culture',         es: 'arte cultura' } },
-  { id: 'geography',  label: 'Geografia',        query: { en: 'geography',           es: 'geografía' } },
+  { id: 'science',    label: 'Ciência',          query: { pt: 'ciência',              en: 'science',             es: 'ciencia' } },
+  { id: 'technology', label: 'Tecnologia',       query: { pt: 'tecnologia',           en: 'technology',          es: 'tecnología' } },
+  { id: 'sports',     label: 'Esportes',         query: { pt: 'esporte',              en: 'sport',               es: 'deporte' } },
+  { id: 'history',    label: 'História',         query: { pt: 'história',             en: 'history',             es: 'historia' } },
+  { id: 'politics',   label: 'Política',         query: { pt: 'política governo',     en: 'politics government', es: 'política gobierno' } },
+  { id: 'arts',       label: 'Arte e cultura',   query: { pt: 'arte cultura',         en: 'art culture',         es: 'arte cultura' } },
+  { id: 'geography',  label: 'Geografia',        query: { pt: 'geografia',            en: 'geography',           es: 'geografía' } },
 ];
 
 function shuffle(arr) {
@@ -89,7 +90,7 @@ function cleanExtract(text) {
   return t.trim();
 }
 
-const DISAMBIG_RE = /^[A-ZÁÉÍÓÚÑ][\wÀ-ÿ' -]* (may refer to|puede referirse a|puede hacer referencia a)/i;
+const DISAMBIG_RE = /^[A-ZÁÉÍÓÚÑ][\wÀ-ÿ' -]* (may refer to|puede referirse a|puede hacer referencia a|pode se referir a|pode referir-se a)/i;
 
 async function fetchCandidates(langCode, topicId, count) {
   const topic = TOPICS.find(t => t.id === topicId) || TOPICS[0];

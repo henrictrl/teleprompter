@@ -1,18 +1,21 @@
 import { LANGS, TOPICS, buildScript } from './wikipedia.js';
-import { getCache, saveToCache, deleteFromCache, getHistory, addHistoryEntry, getStats } from './storage.js';
+import { getCache, saveToCache, deleteFromCache, getHistory, addHistoryEntry, getStats, fixMissedWord } from './storage.js';
 import { createTeleprompter } from './teleprompter.js';
 import { isSupported as micIsSupported, createSpeechChecker, normalizeWord, tokenize } from './speech.js';
 
 // ---------- estado ----------
 const state = {
   lang: 'en',
+  source: 'wikipedia', // 'wikipedia' | 'custom'
   topic: 'random',
   duration: 2,
   wpmSetting: 130,
 };
 let currentScript = null;
 let sessionLogged = false;
+let sessionMinimized = false;
 let fontSize = 34;
+
 let wordEls = [];
 let scriptWordsNorm = [];
 let wordStates = []; // paralelo a wordEls: null | 'correct' | 'missed'
@@ -20,12 +23,21 @@ let expectedIndex = 0;
 let micOn = false;
 let micUsedThisSession = false;
 
+const SILENCE_TIMEOUT_MS = 6000;
+let silenceTimer = null;
+let lastRecognitionActivity = 0;
+
 // ---------- refs: tela de configuração ----------
 const topicSelect = document.getElementById('topic-select');
 const wpmRange = document.getElementById('wpm-range');
 const wpmValue = document.getElementById('wpm-value');
 const btnGenerate = document.getElementById('btn-generate');
 const genStatus = document.getElementById('generate-status');
+const wikipediaFields = document.getElementById('wikipedia-fields');
+const customFields = document.getElementById('custom-fields');
+const customText = document.getElementById('custom-text');
+const btnUseCustom = document.getElementById('btn-use-custom');
+const customStatus = document.getElementById('custom-status');
 const libraryList = document.getElementById('library-list');
 const libraryEmpty = document.getElementById('library-empty');
 const statsSummary = document.getElementById('stats-summary');
@@ -34,6 +46,14 @@ const historyEmpty = document.getElementById('history-empty');
 const voiceSummary = document.getElementById('voice-summary');
 const voiceHistoryList = document.getElementById('voice-history-list');
 const voiceHistoryEmpty = document.getElementById('voice-history-empty');
+
+// ---------- refs: player flutuante ----------
+const miniPlayer = document.getElementById('mini-player');
+const miniPlayerBody = document.getElementById('mini-player-body');
+const miniPlayerTitle = document.getElementById('mini-player-title');
+const miniPlayerMeta = document.getElementById('mini-player-meta');
+const miniPlayerProgressFill = document.getElementById('mini-player-progress-fill');
+const miniPlayerClose = document.getElementById('mini-player-close');
 
 // ---------- refs: tela de leitura ----------
 const screenSetup = document.getElementById('screen-setup');
@@ -46,8 +66,8 @@ const progressFill = document.getElementById('progress-fill');
 const btnPlayPause = document.getElementById('btn-playpause');
 const wpmReadout = document.getElementById('wpm-readout');
 const btnBack = document.getElementById('btn-back');
+const btnMinimize = document.getElementById('btn-minimize');
 const btnFullscreen = document.getElementById('btn-fullscreen');
-const micStatusDot = document.getElementById('mic-status-dot');
 const btnSpeedUp = document.getElementById('btn-speed-up');
 const btnSpeedDown = document.getElementById('btn-speed-down');
 const btnFontUp = document.getElementById('btn-font-up');
@@ -58,6 +78,16 @@ const voiceScore = document.getElementById('voice-score');
 const liveCaption = document.getElementById('live-caption');
 const voiceHint = document.getElementById('voice-hint');
 const progressTrack = document.getElementById('progress-track');
+
+// ---------- refs: popup de correção ----------
+const correctionOverlay = document.getElementById('correction-overlay');
+const correctionClose = document.getElementById('correction-close');
+const correctionWordEl = document.getElementById('correction-word');
+const correctionStatus = document.getElementById('correction-status');
+const correctionMic = document.getElementById('correction-mic');
+const correctionMicLabel = document.getElementById('correction-mic-label');
+const correctionCaption = document.getElementById('correction-caption');
+const correctionManual = document.getElementById('correction-manual');
 
 const prompter = createTeleprompter({ viewport, content: contentEl, minWpm: 60, maxWpm: 600 });
 
@@ -89,6 +119,7 @@ function formatTime(seconds) {
 }
 
 function topicLabel(id) {
+  if (id === 'custom') return 'Meu texto';
   return (TOPICS.find(t => t.id === id) || {}).label || id;
 }
 
@@ -122,6 +153,11 @@ function wireSeg(containerId, onChange) {
 }
 wireSeg('field-lang', v => { state.lang = v; });
 wireSeg('field-duration', v => { state.duration = parseInt(v, 10); });
+wireSeg('field-source', v => {
+  state.source = v;
+  wikipediaFields.hidden = v !== 'wikipedia';
+  customFields.hidden = v !== 'custom';
+});
 
 topicSelect.addEventListener('change', () => { state.topic = topicSelect.value; });
 
@@ -131,7 +167,6 @@ function updateRangeFill(rangeEl) {
   const pct = ((Number(rangeEl.value) - min) / (max - min)) * 100;
   rangeEl.style.background = `linear-gradient(to right, var(--accent) 0%, var(--accent) ${pct}%, var(--border) ${pct}%, var(--border) 100%)`;
 }
-
 wpmRange.addEventListener('input', () => {
   state.wpmSetting = parseInt(wpmRange.value, 10);
   wpmValue.textContent = state.wpmSetting;
@@ -160,6 +195,43 @@ btnGenerate.addEventListener('click', async () => {
   }
 });
 
+btnUseCustom.addEventListener('click', () => {
+  const raw = customText.value || '';
+  const cleaned = raw.replace(/[ \t]+/g, ' ').replace(/\n{3,}/g, '\n\n').trim();
+  const wordCount = cleaned.split(/\s+/).filter(Boolean).length;
+  customStatus.classList.remove('is-error');
+  if (wordCount < 5) {
+    customStatus.classList.add('is-error');
+    customStatus.textContent = 'Cole ou escreva um pouco mais de texto.';
+    return;
+  }
+  customStatus.textContent = '';
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  const title = words.slice(0, 6).join(' ') + (words.length > 6 ? '…' : '');
+  const script = {
+    title,
+    text: cleaned,
+    wordCount,
+    lang: state.lang,
+    topic: 'custom',
+    sources: [],
+  };
+  saveToCache(script);
+  renderLibrary();
+  openReader(script);
+});
+
+// ---------- painéis recolhíveis ----------
+document.addEventListener('click', (e) => {
+  const btn = e.target.closest('.card-collapse-btn');
+  if (!btn) return;
+  const card = btn.closest('.card');
+  if (!card) return;
+  const collapsed = card.classList.toggle('is-collapsed');
+  btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+});
+
+// ---------- biblioteca ----------
 function renderLibrary() {
   const cache = getCache();
   libraryEmpty.style.display = cache.length ? 'none' : '';
@@ -192,6 +264,7 @@ libraryList.addEventListener('click', (e) => {
   }
 });
 
+// ---------- relatórios ----------
 function tallyWords(words) {
   const counts = new Map();
   words.forEach(w => {
@@ -202,9 +275,9 @@ function tallyWords(words) {
   return [...counts.values()].sort((a, b) => b.count - a.count);
 }
 
-function chipRow(items) {
+function chipRow(items, lang) {
   return `<div class="chip-row">${items.map(({ word, count }) =>
-    `<span class="chip">${escapeHTML(word)}${count > 1 ? `<span class="chip-count">×${count}</span>` : ''}</span>`
+    `<button type="button" class="chip" data-word="${escapeHTML(word)}" data-lang="${escapeHTML(lang)}">${escapeHTML(word)}${count > 1 ? `<span class="chip-count">×${count}</span>` : ''}</button>`
   ).join('')}</div>`;
 }
 
@@ -215,7 +288,7 @@ function renderTopMissed(stats) {
   container.innerHTML = langs.map(lang => `
     <div class="top-missed-group">
       <div class="top-missed-label">Palavras que mais escapam — ${LANGS[lang]?.label || lang}</div>
-      ${chipRow(stats.topMissedByLang[lang])}
+      ${chipRow(stats.topMissedByLang[lang], lang)}
     </div>
   `).join('');
 }
@@ -265,7 +338,7 @@ function renderReports() {
     const detail = missedTally.length ? `
       <details class="history-detail">
         <summary>${missedTally.length} palavra${missedTally.length === 1 ? '' : 's'} não reconhecida${missedTally.length === 1 ? '' : 's'}</summary>
-        ${chipRow(missedTally)}
+        ${chipRow(missedTally, h.lang)}
       </details>
     ` : '';
 
@@ -280,6 +353,22 @@ function renderReports() {
     `;
   }).join('');
 }
+
+// clique numa palavra errada do relatório (painel de mais erradas ou
+// detalhe por sessão) abre o mesmo popup de correção do teleprompter
+document.addEventListener('click', (e) => {
+  const chip = e.target.closest('.chip');
+  if (!chip || !chip.dataset.word) return;
+  openCorrectionModal({
+    word: chip.dataset.word,
+    lang: chip.dataset.lang,
+    onFixed: () => {
+      fixMissedWord(chip.dataset.lang, chip.dataset.word);
+      renderReports();
+    },
+    onClose: () => {},
+  });
+});
 
 // ---------- tela de leitura ----------
 function renderContentText(text) {
@@ -312,13 +401,15 @@ function updateTimecode() {
 function openReader(script) {
   currentScript = script;
   sessionLogged = false;
+  sessionMinimized = false;
   expectedIndex = 0;
   micUsedThisSession = false;
-  interimProcessedCount = 0;
   if (micOn) { speech.stop(); setMicState(false); }
+  stopSilenceWatch();
   liveCaption.textContent = '';
   voiceScore.textContent = '';
   voiceScore.className = 'voice-score mono';
+  hideMiniPlayer();
   screenSetup.classList.remove('is-active');
   screenReader.classList.add('is-active');
   contentEl.lang = script.lang;
@@ -326,9 +417,8 @@ function openReader(script) {
   renderContentText(script.text);
   // Sem requestAnimationFrame aqui de propósito: ler scrollHeight logo
   // abaixo já força o navegador a calcular o layout do texto novo na
-  // hora. Adiar pro próximo frame deixava uma brecha entre a tela ficar
-  // clicável e o motor de leitura estar pronto — clicar em play bem
-  // rápido nessa janela cancelava o play sem avisar nada.
+  // hora, então dá pra fazer tudo direto, sem brecha de tempo em que
+  // a tela já está clicável mas o motor ainda não está pronto.
   prompter.reset();
   prompter.setContentMeta(script.wordCount);
   prompter.setWpm(state.wpmSetting);
@@ -369,13 +459,58 @@ function logSession(completed) {
   renderReports();
 }
 
-function closeReader() {
+function endSessionCommon() {
   prompter.pause();
   if (micOn) { speech.stop(); setMicState(false); }
+  stopSilenceWatch();
+  syncPlayButton();
+}
+
+function closeReader() {
+  endSessionCommon();
   logSession(false);
+  hideMiniPlayer();
   screenReader.classList.remove('is-active');
   screenSetup.classList.add('is-active');
+  currentScript = null;
+  sessionMinimized = false;
 }
+
+function minimizeReader() {
+  endSessionCommon();
+  sessionMinimized = true;
+  screenReader.classList.remove('is-active');
+  screenSetup.classList.add('is-active');
+  showMiniPlayer();
+}
+
+function restoreReader() {
+  if (!sessionMinimized || !currentScript) return;
+  sessionMinimized = false;
+  hideMiniPlayer();
+  screenSetup.classList.remove('is-active');
+  screenReader.classList.add('is-active');
+  syncPlayButton();
+  updateTimecode();
+  progressFill.style.width = `${Math.round(prompter.getProgress() * 100)}%`;
+}
+
+function showMiniPlayer() {
+  if (!currentScript) return;
+  miniPlayerTitle.textContent = currentScript.title || 'Texto';
+  miniPlayerMeta.textContent = `${LANGS[currentScript.lang]?.label || currentScript.lang} · pausado`;
+  miniPlayerProgressFill.style.width = `${Math.round(prompter.getProgress() * 100)}%`;
+  miniPlayer.hidden = false;
+}
+function hideMiniPlayer() {
+  miniPlayer.hidden = true;
+}
+
+miniPlayerBody.addEventListener('click', restoreReader);
+miniPlayerClose.addEventListener('click', (e) => {
+  e.stopPropagation();
+  closeReader();
+});
 
 prompter.onTick(({ progress }) => {
   progressFill.style.width = `${Math.round(progress * 100)}%`;
@@ -390,10 +525,23 @@ prompter.onFinish(() => {
 });
 
 btnPlayPause.addEventListener('click', () => {
-  prompter.toggle();
+  if (prompter.isPlaying()) {
+    prompter.pause();
+    if (micOn) { speech.stop(); setMicState(false); }
+  } else {
+    prompter.play();
+  }
   syncPlayButton();
 });
 btnBack.addEventListener('click', closeReader);
+btnMinimize.addEventListener('click', minimizeReader);
+btnFullscreen.addEventListener('click', () => {
+  if (document.fullscreenElement) {
+    document.exitFullscreen().catch(() => {});
+  } else {
+    document.documentElement.requestFullscreen().catch(() => {});
+  }
+});
 
 function bumpSpeed(delta) {
   wpmReadout.textContent = prompter.setWpm(prompter.getWpm() + delta);
@@ -482,78 +630,82 @@ function updateVoiceScore() {
   voiceScore.className = `voice-score mono is-${accuracyTier(pct)}`;
 }
 
-// Clique manual numa palavra: a pessoa fala ela certinho enquanto
-// clica, e ela vira certa na hora — não depende do reconhecedor ter
-// pego direito. Só ativo com o microfone ligado (é aí que as cores
-// fazem sentido).
-function manualCorrectWord(i) {
-  if (!wordEls[i]) return;
-  markWord(i, 'correct');
-  if (i >= expectedIndex) expectedIndex = i + 1;
-  updateCurrentWordHighlight();
-  updateVoiceScore();
+function registerRecognitionActivity() {
+  lastRecognitionActivity = Date.now();
 }
 
-contentEl.addEventListener('click', (e) => {
-  if (!micOn) return;
-  const el = e.target.closest('.word');
-  if (!el || !el.dataset.idx) return;
-  manualCorrectWord(Number(el.dataset.idx));
-});
-
-const MATCH_LOOKAHEAD = 8;
-
-// Tenta casar cada palavra falada com o roteiro, a partir de
-// expectedIndex, dentro de uma janela de tolerância — usado tanto
-// pelo resultado provisório (rápido) quanto pelo final (definitivo).
-function matchSpokenWords(normWords) {
-  normWords.forEach(sw => {
-    let found = -1;
-    for (let k = 0; k < MATCH_LOOKAHEAD && expectedIndex + k < scriptWordsNorm.length; k++) {
-      if (scriptWordsNorm[expectedIndex + k] === sw) { found = expectedIndex + k; break; }
-    }
-    if (found >= 0) {
-      for (let j = expectedIndex; j < found; j++) markWord(j, 'missed');
-      markWord(found, 'correct');
-      expectedIndex = found + 1;
-    }
-    // se não achar no horizonte de busca, ignora — provavelmente foi o
-    // reconhecedor entendendo errado, não vale marcar como erro do usuário
-  });
+function stopSilenceWatch() {
+  if (silenceTimer) { clearInterval(silenceTimer); silenceTimer = null; }
 }
 
-// Quantas palavras do trecho falado ATUAL (ainda não finalizado pelo
-// reconhecedor) já foram processadas — pra não repetir e pra saber o
-// que ainda falta quando o trecho crescer ou finalizar.
-let interimProcessedCount = 0;
+function startSilenceWatch() {
+  stopSilenceWatch();
+  registerRecognitionActivity();
+  silenceTimer = setInterval(() => {
+    if (!micOn) { stopSilenceWatch(); return; }
+    if (Date.now() - lastRecognitionActivity > SILENCE_TIMEOUT_MS) {
+      // silêncio prolongado: desliga o reconhecimento e o texto
+      // continua rolando sozinho, na velocidade escolhida
+      speech.stop();
+      setMicState(false);
+    }
+  }, 1000);
+}
 
-function handleInterim(text) {
+// Casa as últimas palavras faladas contra uma janela à frente do
+// ponteiro atual, pegando qualquer uma delas nessa janela — não
+// precisa ser a primeira da vez nem vir na ordem exata, o que deixa
+// o reconhecimento acompanhar mesmo quando o app ouve fora de ordem.
+const MATCH_LOOKAHEAD = 10;
+const RECENT_WORDS = 5;
+
+function processTranscript(text) {
   liveCaption.textContent = text;
+  registerRecognitionActivity();
+
   const tokens = tokenize(text).map(normalizeWord).filter(Boolean);
-  // segura a ÚLTIMA palavra — ela ainda pode estar sendo reconhecida e
-  // mudar no próximo evento. Só processa o que já parece estável.
-  const stableCount = Math.max(0, tokens.length - 1);
-  if (stableCount > interimProcessedCount) {
-    matchSpokenWords(tokens.slice(interimProcessedCount, stableCount));
-    interimProcessedCount = stableCount;
+  if (!tokens.length) return;
+
+  // multiconjunto das últimas palavras ouvidas — cada uma só pode
+  // "se gastar" casando com uma posição por vez, pra não casar a
+  // mesma palavra falada com duas posições diferentes do roteiro
+  const remaining = new Map();
+  tokens.slice(-RECENT_WORDS).forEach(t => remaining.set(t, (remaining.get(t) || 0) + 1));
+
+  let advanced = false;
+  let guard = 0;
+  while (remaining.size && guard < MATCH_LOOKAHEAD) {
+    guard++;
+    let found = -1;
+    for (let k = 0, ptr = expectedIndex; ptr < scriptWordsNorm.length && k < MATCH_LOOKAHEAD; ptr++, k++) {
+      const w = scriptWordsNorm[ptr];
+      if (w && remaining.has(w)) { found = ptr; break; }
+    }
+    if (found === -1) break;
+
+    const w = scriptWordsNorm[found];
+    const left = remaining.get(w) - 1;
+    if (left > 0) remaining.set(w, left);
+    else remaining.delete(w);
+
+    for (let j = expectedIndex; j < found; j++) markWord(j, 'missed');
+    markWord(found, 'correct');
+    expectedIndex = found + 1;
+    advanced = true;
+  }
+
+  if (advanced) {
     updateCurrentWordHighlight();
     updateVoiceScore();
+    if (prompter.getMode() === 'follow') {
+      const target = wordEls[Math.min(expectedIndex, wordEls.length - 1)];
+      prompter.scrollToWord(target);
+    }
   }
-}
-
-function handleFinalChunk(text) {
-  const tokens = tokenize(text).map(normalizeWord).filter(Boolean);
-  if (tokens.length > interimProcessedCount) {
-    matchSpokenWords(tokens.slice(interimProcessedCount));
-  }
-  interimProcessedCount = 0; // próximo trecho começa do zero
-  updateCurrentWordHighlight();
-  updateVoiceScore();
 }
 
 const speech = createSpeechChecker({
-  onFinalChunk: handleFinalChunk,
-  onInterim: handleInterim,
+  onTranscript: processTranscript,
   onError: (err) => {
     if (err === 'not-allowed' || err === 'service-not-allowed') {
       liveCaption.textContent = 'Permissão de microfone negada.';
@@ -567,14 +719,18 @@ function setMicState(on) {
   if (on) micUsedThisSession = true;
   btnMic.setAttribute('aria-pressed', on ? 'true' : 'false');
   micLabel.textContent = on ? 'Ouvindo…' : 'Voz';
-  micStatusDot.classList.toggle('is-active', on);
   contentEl.classList.toggle('mic-active', on);
   voiceHint.classList.toggle('is-visible', on);
   if (on) {
     updateCurrentWordHighlight();
+    prompter.setMode('follow');
+    if (!prompter.isPlaying()) { prompter.play(); syncPlayButton(); }
+    startSilenceWatch();
   } else {
     liveCaption.textContent = '';
     clearCurrentWordHighlight();
+    prompter.setMode('timer');
+    stopSilenceWatch();
   }
 }
 
@@ -595,20 +751,138 @@ btnMic.addEventListener('click', () => {
   if (ok) setMicState(true);
 });
 
-// ---------- tela cheia (luz verde da barra de título) ----------
-btnFullscreen.addEventListener('click', () => {
-  if (document.fullscreenElement) {
-    document.exitFullscreen().catch(() => {});
-  } else {
-    document.documentElement.requestFullscreen().catch(() => {});
-  }
+// clicar numa palavra (com o mic ligado) NUNCA marca ela certa na
+// hora — sempre abre o popup pra pessoa corrigir falando
+contentEl.addEventListener('click', (e) => {
+  if (!micOn) return;
+  const el = e.target.closest('.word');
+  if (!el || !el.dataset.idx) return;
+  openWordCorrectionInReader(Number(el.dataset.idx));
 });
 
+function openWordCorrectionInReader(i) {
+  const el = wordEls[i];
+  if (!el || !currentScript) return;
+  const word = el.textContent;
+  const wasPlaying = prompter.isPlaying();
+  const micWasOn = micOn;
+  prompter.pause();
+  if (micOn) { speech.stop(); setMicState(false); }
+  syncPlayButton();
+
+  openCorrectionModal({
+    word,
+    lang: currentScript.lang,
+    onFixed: () => {
+      markWord(i, 'correct');
+      updateCurrentWordHighlight();
+      updateVoiceScore();
+      fixMissedWord(currentScript.lang, word);
+      renderReports();
+    },
+    onClose: () => {
+      if (micWasOn) {
+        const speechLang = (LANGS[currentScript.lang] || {}).speechLang || 'en-US';
+        const ok = speech.start(speechLang);
+        if (ok) setMicState(true);
+      }
+      if (wasPlaying) { prompter.play(); syncPlayButton(); }
+    },
+  });
+}
+
+// ---------- popup de correção (compartilhado: teleprompter + relatório) ----------
+let correctionState = null;
+let correctionSpeech = null;
+
+function openCorrectionModal({ word, lang, onFixed, onClose }) {
+  correctionState = { word, lang, onFixed, onClose, fixed: false };
+  correctionWordEl.textContent = word;
+  correctionStatus.textContent = 'Toque em "Ouvir" e fale a palavra em voz alta.';
+  correctionStatus.className = 'correction-status';
+  correctionCaption.textContent = '';
+  correctionMic.setAttribute('aria-pressed', 'false');
+  correctionMicLabel.textContent = 'Ouvir';
+  correctionManual.disabled = false;
+  if (!micIsSupported()) {
+    correctionMic.disabled = true;
+    correctionMic.title = 'Reconhecimento de voz não é suportado nesse navegador.';
+  }
+  correctionOverlay.hidden = false;
+}
+
+function stopCorrectionSpeech() {
+  if (correctionSpeech) { correctionSpeech.stop(); correctionSpeech = null; }
+  correctionMic.setAttribute('aria-pressed', 'false');
+  correctionMicLabel.textContent = 'Ouvir';
+}
+
+function closeCorrectionModal() {
+  stopCorrectionSpeech();
+  correctionOverlay.hidden = true;
+  const cb = correctionState && correctionState.onClose;
+  correctionState = null;
+  if (cb) cb();
+}
+
+function markCorrectionFixed() {
+  if (!correctionState || correctionState.fixed) return;
+  correctionState.fixed = true;
+  stopCorrectionSpeech();
+  correctionStatus.textContent = 'Reconhecido! Palavra corrigida.';
+  correctionStatus.className = 'correction-status is-good';
+  correctionManual.disabled = true;
+  if (correctionState.onFixed) correctionState.onFixed();
+  setTimeout(() => { if (correctionState) closeCorrectionModal(); }, 900);
+}
+
+correctionMic.addEventListener('click', () => {
+  if (!correctionState || !micIsSupported()) return;
+  if (correctionSpeech) { stopCorrectionSpeech(); return; }
+  const speechLang = (LANGS[correctionState.lang] || {}).speechLang || 'en-US';
+  const targetNorm = normalizeWord(correctionState.word);
+  correctionSpeech = createSpeechChecker({
+    onTranscript: (text) => {
+      correctionCaption.textContent = text;
+      const heard = tokenize(text).map(normalizeWord).filter(Boolean);
+      if (heard.includes(targetNorm)) markCorrectionFixed();
+    },
+    onError: (err) => {
+      if (err === 'not-allowed' || err === 'service-not-allowed') {
+        correctionStatus.textContent = 'Permissão de microfone negada.';
+      }
+    },
+  });
+  const ok = correctionSpeech.start(speechLang);
+  if (ok) {
+    correctionMic.setAttribute('aria-pressed', 'true');
+    correctionMicLabel.textContent = 'Ouvindo…';
+    correctionStatus.textContent = 'Ouvindo…';
+  } else {
+    correctionSpeech = null;
+  }
+});
+correctionManual.addEventListener('click', markCorrectionFixed);
+correctionClose.addEventListener('click', closeCorrectionModal);
+correctionOverlay.addEventListener('click', (e) => {
+  if (e.target === correctionOverlay) closeCorrectionModal();
+});
+
+// ---------- atalhos de teclado ----------
 document.addEventListener('keydown', (e) => {
+  if (!correctionOverlay.hidden) {
+    if (e.code === 'Escape') { e.preventDefault(); closeCorrectionModal(); }
+    return;
+  }
   if (!screenReader.classList.contains('is-active')) return;
   if (e.code === 'Space') {
     e.preventDefault();
-    prompter.toggle();
+    if (prompter.isPlaying()) {
+      prompter.pause();
+      if (micOn) { speech.stop(); setMicState(false); }
+    } else {
+      prompter.play();
+    }
     syncPlayButton();
   } else if (e.code === 'ArrowUp') {
     e.preventDefault();
