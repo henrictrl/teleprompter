@@ -460,6 +460,7 @@ function logSession(completed) {
 }
 
 function endSessionCommon() {
+  closeCorrectionModal();
   prompter.pause();
   if (micOn) { speech.stop(); setMicState(false); }
   stopSilenceWatch();
