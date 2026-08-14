@@ -775,19 +775,30 @@ function openWordCorrectionInReader(i) {
     word,
     lang: currentScript.lang,
     onFixed: () => {
-      markWord(i, 'correct');
-      updateCurrentWordHighlight();
-      updateVoiceScore();
-      fixMissedWord(currentScript.lang, word);
-      renderReports();
+      try {
+        markWord(i, 'correct');
+        updateCurrentWordHighlight();
+        updateVoiceScore();
+        fixMissedWord(currentScript.lang, word);
+        // renderReports é pesado - executar de forma assíncrona
+        setTimeout(() => {
+          try { renderReports(); } catch (e) { console.error('Error rendering reports:', e); }
+        }, 0);
+      } catch (e) {
+        console.error('Error in onFixed:', e);
+      }
     },
     onClose: () => {
-      if (micWasOn) {
-        const speechLang = (LANGS[currentScript.lang] || {}).speechLang || 'en-US';
-        const ok = speech.start(speechLang);
-        if (ok) setMicState(true);
+      try {
+        if (micWasOn) {
+          const speechLang = (LANGS[currentScript.lang] || {}).speechLang || 'en-US';
+          const ok = speech.start(speechLang);
+          if (ok) setMicState(true);
+        }
+        if (wasPlaying) { prompter.play(); syncPlayButton(); }
+      } catch (e) {
+        console.error('Error in onClose:', e);
       }
-      if (wasPlaying) { prompter.play(); syncPlayButton(); }
     },
   });
 }
@@ -834,12 +845,22 @@ function closeCorrectionModal() {
 function markCorrectionFixed() {
   if (!correctionState || correctionState.fixed) return;
   correctionState.fixed = true;
-  stopCorrectionSpeech();
-  correctionStatus.textContent = 'Reconhecido! Palavra corrigida.';
-  correctionStatus.className = 'correction-status is-good';
-  correctionManual.disabled = true;
-  if (correctionState.onFixed) correctionState.onFixed();
-  setTimeout(() => { if (correctionState) closeCorrectionModal(); }, 900);
+  try { stopCorrectionSpeech(); } catch (e) {}
+  
+  try {
+    if (correctionStatus) correctionStatus.textContent = 'Reconhecido! Palavra corrigida.';
+    if (correctionStatus) correctionStatus.className = 'correction-status is-good';
+    if (correctionManual) correctionManual.disabled = true;
+  } catch (e) {}
+  
+  // Chamar callback pesado (renderReports) dentro do timeout para não bloquear UI
+  setTimeout(() => {
+    try {
+      if (correctionState && correctionState.onFixed) correctionState.onFixed();
+    } catch (e) { console.error('Error in onFixed:', e); }
+    // Garantir que o modal feche mesmo se houver erro
+    setTimeout(() => { closeCorrectionModal(); }, 100);
+  }, 500);
 }
 
 correctionMic.addEventListener('click', () => {
