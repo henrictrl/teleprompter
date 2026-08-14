@@ -4,7 +4,7 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Teleprompter — treino de fala</title>
-<meta name="description" content="Teleprompter pessoal para treinar fala e pronúncia em inglês e espanhol com textos aleatórios da Wikipédia." />
+<meta name="description" content="Teleprompter pessoal para treinar fala e pronúncia em português, inglês e espanhol, com textos da Wikipédia ou seus próprios." />
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&family=Source+Serif+4:opsz,wght@8..60,400;8..60,500;8..60,600&display=swap" rel="stylesheet">
@@ -20,67 +20,115 @@
 
       <header class="brand pane-brand">
         <h1>Teleprompter</h1>
-        <p class="brand-sub">treino de leitura em voz alta — inglês e espanhol</p>
+        <p class="brand-sub">treino de leitura em voz alta — português, inglês e espanhol</p>
       </header>
 
       <div class="card pane-controls">
         <div class="field-row">
           <span class="field-label">Idioma</span>
           <div class="seg" id="field-lang" role="radiogroup" aria-label="Idioma do texto">
+            <button type="button" class="seg-btn" data-value="pt" role="radio" aria-checked="false">Português</button>
             <button type="button" class="seg-btn is-selected" data-value="en" role="radio" aria-checked="true">English</button>
             <button type="button" class="seg-btn" data-value="es" role="radio" aria-checked="false">Español</button>
           </div>
         </div>
 
         <div class="field-row">
-          <label class="field-label" for="topic-select">Tema</label>
-          <select id="topic-select" class="select"></select>
-        </div>
-
-        <div class="field-row">
-          <span class="field-label">Duração</span>
-          <div class="seg" id="field-duration" role="radiogroup" aria-label="Duração em minutos">
-            <button type="button" class="seg-btn" data-value="1" role="radio" aria-checked="false">1 min</button>
-            <button type="button" class="seg-btn is-selected" data-value="2" role="radio" aria-checked="true">2 min</button>
-            <button type="button" class="seg-btn" data-value="3" role="radio" aria-checked="false">3 min</button>
-            <button type="button" class="seg-btn" data-value="5" role="radio" aria-checked="false">5 min</button>
-            <button type="button" class="seg-btn" data-value="7" role="radio" aria-checked="false">7 min</button>
-            <button type="button" class="seg-btn" data-value="10" role="radio" aria-checked="false">10 min</button>
+          <span class="field-label">Fonte do texto</span>
+          <div class="seg" id="field-source" role="radiogroup" aria-label="Fonte do texto">
+            <button type="button" class="seg-btn is-selected" data-value="wikipedia" role="radio" aria-checked="true">Wikipédia</button>
+            <button type="button" class="seg-btn" data-value="custom" role="radio" aria-checked="false">Meu texto</button>
           </div>
         </div>
 
-        <div class="field-row field-row-range">
-          <label class="field-label" for="wpm-range">Velocidade inicial — <span id="wpm-value" class="mono">130</span> ppm</label>
-          <input type="range" id="wpm-range" class="range" min="60" max="600" step="10" value="130" />
+        <div id="wikipedia-fields">
+          <div class="field-row">
+            <label class="field-label" for="topic-select">Tema</label>
+            <select id="topic-select" class="select"></select>
+          </div>
+
+          <div class="field-row">
+            <span class="field-label">Duração</span>
+            <div class="seg" id="field-duration" role="radiogroup" aria-label="Duração em minutos">
+              <button type="button" class="seg-btn" data-value="1" role="radio" aria-checked="false">1 min</button>
+              <button type="button" class="seg-btn is-selected" data-value="2" role="radio" aria-checked="true">2 min</button>
+              <button type="button" class="seg-btn" data-value="3" role="radio" aria-checked="false">3 min</button>
+              <button type="button" class="seg-btn" data-value="5" role="radio" aria-checked="false">5 min</button>
+              <button type="button" class="seg-btn" data-value="7" role="radio" aria-checked="false">7 min</button>
+              <button type="button" class="seg-btn" data-value="10" role="radio" aria-checked="false">10 min</button>
+            </div>
+          </div>
+
+          <button type="button" id="btn-generate" class="btn-primary">Gerar texto</button>
+          <p id="generate-status" class="status-text" aria-live="polite"></p>
         </div>
 
-        <button type="button" id="btn-generate" class="btn-primary">Gerar texto</button>
-        <p id="generate-status" class="status-text" aria-live="polite"></p>
+        <div id="custom-fields" hidden>
+          <div class="field-row">
+            <label class="field-label" for="custom-text">Seu texto</label>
+            <textarea id="custom-text" class="textarea" rows="6" placeholder="Cole ou escreva aqui o texto que você quer praticar..."></textarea>
+          </div>
+          <button type="button" id="btn-use-custom" class="btn-primary">Usar este texto</button>
+          <p id="custom-status" class="status-text" aria-live="polite"></p>
+        </div>
+
+        <div class="field-row field-row-range">
+          <label class="field-label" for="wpm-range">Velocidade de referência — <span id="wpm-value" class="mono">130</span> ppm</label>
+          <input type="range" id="wpm-range" class="range" min="60" max="600" step="10" value="130" />
+        </div>
       </div>
 
-      <div class="card pane-library">
-        <div class="card-head"><h2>Textos salvos</h2></div>
-        <ul id="library-list" class="list"></ul>
-        <p id="library-empty" class="empty-note">Nenhum texto salvo ainda. Os textos que você gerar ficam guardados aqui.</p>
+      <div class="card pane-library" id="pane-library">
+        <div class="card-head">
+          <h2>Textos salvos</h2>
+          <button type="button" class="card-collapse-btn" aria-label="Recolher / expandir" aria-expanded="true"></button>
+        </div>
+        <div class="card-body">
+          <ul id="library-list" class="list"></ul>
+          <p id="library-empty" class="empty-note">Nenhum texto salvo ainda. Os textos que você gerar ou colar ficam guardados aqui.</p>
+        </div>
       </div>
 
-      <div class="card pane-history">
-        <div class="card-head"><h2>Histórico</h2></div>
-        <div id="stats-summary" class="stats-grid"></div>
-        <ul id="history-list" class="list list-compact"></ul>
-        <p id="history-empty" class="empty-note">Ainda sem sessões registradas.</p>
+      <div class="card pane-voice" id="pane-voice">
+        <div class="card-head">
+          <h2>Reconhecimento de voz</h2>
+          <button type="button" class="card-collapse-btn" aria-label="Recolher / expandir" aria-expanded="true"></button>
+        </div>
+        <div class="card-body">
+          <div id="voice-summary" class="stats-grid cols-2"></div>
+          <div id="top-missed" class="top-missed"></div>
+          <ul id="voice-history-list" class="list list-compact"></ul>
+          <p id="voice-history-empty" class="empty-note">Ainda sem leituras com o microfone ativado.</p>
+        </div>
       </div>
 
-      <div class="card pane-voice">
-        <div class="card-head"><h2>Reconhecimento de voz</h2></div>
-        <div id="voice-summary" class="stats-grid cols-2"></div>
-        <div id="top-missed" class="top-missed"></div>
-        <ul id="voice-history-list" class="list list-compact"></ul>
-        <p id="voice-history-empty" class="empty-note">Ainda sem leituras com o microfone ativado.</p>
+      <div class="card pane-history" id="pane-history">
+        <div class="card-head">
+          <h2>Histórico</h2>
+          <button type="button" class="card-collapse-btn" aria-label="Recolher / expandir" aria-expanded="true"></button>
+        </div>
+        <div class="card-body">
+          <div id="stats-summary" class="stats-grid"></div>
+          <ul id="history-list" class="list list-compact"></ul>
+          <p id="history-empty" class="empty-note">Ainda sem sessões registradas.</p>
+        </div>
       </div>
 
-      <p class="foot-note pane-foot">Atalhos na leitura: <span class="kbd">espaço</span> play/pause · <span class="kbd">↑</span><span class="kbd">↓</span> velocidade · <span class="kbd">esc</span> voltar</p>
+      <p class="foot-note pane-foot">Atalhos na leitura: <span class="kbd">espaço</span> play/pause · <span class="kbd">↑</span><span class="kbd">↓</span> velocidade · <span class="kbd">esc</span> fechar sessão</p>
 
+    </div>
+
+    <!-- ===== player flutuante (sessão minimizada) ===== -->
+    <div id="mini-player" class="mini-player" hidden>
+      <button type="button" id="mini-player-body" class="mini-player-body">
+        <span class="mini-player-dot" aria-hidden="true"></span>
+        <span class="mini-player-info">
+          <span class="mini-player-title" id="mini-player-title"></span>
+          <span class="mini-player-meta" id="mini-player-meta"></span>
+        </span>
+        <span class="mini-player-progress"><span class="mini-player-progress-fill" id="mini-player-progress-fill"></span></span>
+      </button>
+      <button type="button" id="mini-player-close" class="mini-player-close" aria-label="Encerrar sessão">✕</button>
     </div>
   </section>
 
@@ -89,10 +137,10 @@
     <div class="reader">
 
       <div class="reader-top">
-        <div class="traffic-lights" role="group" aria-label="Controles da janela">
-          <button type="button" id="btn-back" class="tl-dot tl-red" aria-label="Voltar" title="Voltar"></button>
-          <span id="mic-status-dot" class="tl-dot tl-yellow" aria-hidden="true" title="Indicador do microfone"></span>
-          <button type="button" id="btn-fullscreen" class="tl-dot tl-green" aria-label="Tela cheia" title="Tela cheia"></button>
+        <div class="traffic-lights" role="group" aria-label="Controles da sessão">
+          <button type="button" id="btn-back" class="tl-btn tl-red" aria-label="Encerrar sessão" title="Encerrar sessão"></button>
+          <button type="button" id="btn-minimize" class="tl-btn tl-yellow" aria-label="Minimizar" title="Minimizar"></button>
+          <button type="button" id="btn-fullscreen" class="tl-btn tl-green" aria-label="Tela cheia" title="Tela cheia"></button>
         </div>
         <div class="reader-title mono" id="reader-title"></div>
         <div class="timecode mono" id="timecode">00:00 / 00:00</div>
@@ -119,7 +167,7 @@
             <span id="live-caption" class="voice-caption" aria-live="polite"></span>
           </div>
         </div>
-        <p id="voice-hint" class="voice-hint">Clique numa palavra e fale ela certinho — ela vira verde na hora.</p>
+        <p id="voice-hint" class="voice-hint">Clique numa palavra pra corrigir ela numa janelinha, sem parar de ler depois.</p>
       </div>
 
       <div class="reader-bottom">
@@ -134,6 +182,22 @@
 
     </div>
   </section>
+
+  <!-- ===== popup de correção de palavra (compartilhado) ===== -->
+  <div id="correction-overlay" class="modal-overlay" hidden>
+    <div class="modal-dialog" role="dialog" aria-modal="true" aria-labelledby="correction-word">
+      <button type="button" id="correction-close" class="modal-close" aria-label="Fechar">✕</button>
+      <p class="correction-eyebrow">Fale esta palavra</p>
+      <h3 id="correction-word" class="correction-word"></h3>
+      <p class="correction-status" id="correction-status">Toque em "Ouvir" e fale a palavra em voz alta.</p>
+      <button type="button" id="correction-mic" class="voice-toggle correction-mic" aria-pressed="false">
+        <span class="mic-dot" aria-hidden="true"></span>
+        <span id="correction-mic-label">Ouvir</span>
+      </button>
+      <p class="correction-caption" id="correction-caption"></p>
+      <button type="button" id="correction-manual" class="btn-secondary">Marcar como corrigida</button>
+    </div>
+  </div>
 
 </div>
 
